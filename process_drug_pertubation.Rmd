@@ -1,0 +1,600 @@
+---
+title: "Process Drug Perturbations"
+author: "Matthew Berginski"
+date: "2/5/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(here)
+library(DarkKinaseTools)
+library(ggdendro)
+library(BerginskiRMisc)
+```
+
+```{r}
+cols_spec = cols(
+	Name = col_character(),
+	Length = col_double(),
+	EffectiveLength = col_double(),
+	TPM = col_double(),
+	NumReads = col_double()
+)
+
+drug_perturb = rbind(
+	read_delim(here('salmon_alignments/batch_01/rep_01/DMSO/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 1, rep = 1, treatment = "DMSO"),
+	read_delim(here('salmon_alignments/batch_01/rep_01/Dinac/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 1, rep = 1, treatment = "Dina"),
+	read_delim(here('salmon_alignments/batch_01/rep_01/Ent/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 1, rep = 1, treatment = "Ent"),
+	read_delim(here('salmon_alignments/batch_01/rep_01/JIB04/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 1, rep = 1, treatment = "JIB-04 low"),
+	read_delim(here('salmon_alignments/batch_01/rep_01/MK2206/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 1, rep = 1, treatment = "MK2206"),
+	read_delim(here('salmon_alignments/batch_01/rep_01/Tram/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 1, rep = 1, treatment = "Tram"),
+	
+	read_delim(here('salmon_alignments/batch_01/rep_02/DMSO/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 1, rep = 2, treatment = "DMSO"),
+	read_delim(here('salmon_alignments/batch_01/rep_02/Dinac/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 1, rep = 2, treatment = "Dina"),
+	read_delim(here('salmon_alignments/batch_01/rep_02/Ent/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 1, rep = 2, treatment = "Ent"),	
+	read_delim(here('salmon_alignments/batch_01/rep_02/JIB04/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 1, rep = 2, treatment = "JIB-04 low"),
+	read_delim(here('salmon_alignments/batch_01/rep_02/MK2206/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 1, rep = 2, treatment = "MK2206"),	
+	read_delim(here('salmon_alignments/batch_01/rep_02/Tram/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 1, rep = 2, treatment = "Tram"),
+	
+	read_delim(here('salmon_alignments/batch_02/rep_01/DMSO/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 2, rep = 1, treatment = "DMSO"),
+	read_delim(here('salmon_alignments/batch_02/rep_01/JIB04/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 2, rep = 1, treatment = "JIB-04 high"),
+	read_delim(here('salmon_alignments/batch_02/rep_01/Navi/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 2, rep = 1, treatment = "Navi"),
+	read_delim(here('salmon_alignments/batch_02/rep_01/Paclit/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 2, rep = 1, treatment = "Paclit"),	
+	read_delim(here('salmon_alignments/batch_02/rep_01/Rux/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 2, rep = 1, treatment = "Rux"),
+	read_delim(here('salmon_alignments/batch_02/rep_01/SGC/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 2, rep = 1, treatment = "SGC"),	
+	# read_delim(here('salmon_alignments/batch_02/rep_01/Tram/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+	# 	mutate(batch = 2, rep = 1, treatment = "Tram"),		
+	
+	read_delim(here('salmon_alignments/batch_02/rep_02/DMSO/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 2, rep = 2, treatment = "DMSO"),		
+	read_delim(here('salmon_alignments/batch_02/rep_02/JIB04/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 2, rep = 2, treatment = "JIB-04 high"),			
+	read_delim(here('salmon_alignments/batch_02/rep_02/Navi/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 2, rep = 2, treatment = "Navi"),				
+	read_delim(here('salmon_alignments/batch_02/rep_02/Paclit/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 2, rep = 2, treatment = "Paclit"),					
+	read_delim(here('salmon_alignments/batch_02/rep_02/Rux/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 2, rep = 2, treatment = "Rux"),				
+	read_delim(here('salmon_alignments/batch_02/rep_02/SGC/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 2, rep = 2, treatment = "SGC"),
+	
+	
+	read_delim(here('salmon_alignments/batch_03/rep_01/DMSO/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 3, rep = 1, treatment = "DMSO"),
+	read_delim(here('salmon_alignments/batch_03/rep_01/Alis/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 3, rep = 1, treatment = "Alis"),
+	read_delim(here('salmon_alignments/batch_03/rep_01/Bort/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 3, rep = 1, treatment = "Bort"),
+	read_delim(here('salmon_alignments/batch_03/rep_01/CoCl2/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 3, rep = 1, treatment = "CoCl2"),
+	read_delim(here('salmon_alignments/batch_03/rep_01/FCCP/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 3, rep = 1, treatment = "FCCP"),
+	read_delim(here('salmon_alignments/batch_03/rep_01/Palbo/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 3, rep = 1, treatment = "Palbo"),
+	
+	read_delim(here('salmon_alignments/batch_03/rep_02/DMSO/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 3, rep = 2, treatment = "DMSO"),	
+	read_delim(here('salmon_alignments/batch_03/rep_02/Alis/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 3, rep = 2, treatment = "Alis"),
+	read_delim(here('salmon_alignments/batch_03/rep_02/Bort/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 3, rep = 2, treatment = "Bort"),
+	read_delim(here('salmon_alignments/batch_03/rep_02/CoCl2/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 3, rep = 2, treatment = "CoCl2"),	
+	read_delim(here('salmon_alignments/batch_03/rep_02/FCCP/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 3, rep = 2, treatment = "FCCP"),	
+	read_delim(here('salmon_alignments/batch_03/rep_02/Palbo/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+		mutate(batch = 3, rep = 2, treatment = "Palbo")
+	# read_delim(here('salmon_alignments/batch_03/rep_02/Tram/quant.sf'), col_types = cols_spec, delim='\t') %>% 
+	# 	mutate(batch = 3, rep = 2, treatment = "Tram")
+) 
+
+```
+
+```{r}
+if (! file.exists(here('transcript_to_hgnc.csv'))) {
+	ensembl <- biomaRt::useMart("ensembl")
+	ensembl = biomaRt::useDataset("hsapiens_gene_ensembl",mart=ensembl)
+	transcript_to_hgnc = biomaRt::getBM(attributes = c('ensembl_transcript_id','hgnc_symbol'), mart = ensembl)
+	write_csv(transcript_to_hgnc, here('transcript_to_hgnc.csv'))
+} else {
+	transcript_to_hgnc = read_csv(here('transcript_to_hgnc.csv'))
+}
+```
+
+```{r}
+drug_perturb = drug_perturb %>%
+	separate(Name, sep="\\.", into = c('ensembl_transcript_id','transcript_version')) %>%
+	left_join(transcript_to_hgnc) %>%
+	filter(hgnc_symbol != '') %>%
+	select(-ensembl_transcript_id, -transcript_version, -Length, -EffectiveLength, -NumReads) %>%
+	group_by(treatment,batch,rep,hgnc_symbol) %>%
+	summarise(summed_TPM = sum(TPM))
+```
+
+# UnNormalized UMAP/Clustering Visualization
+
+```{r}
+drug_perturb_batch_average = drug_perturb %>%
+	group_by(treatment,batch,hgnc_symbol) %>%
+	summarise(aver_TPM = mean(summed_TPM)) %>%
+	ungroup() %>%
+	mutate(treatment_batch = paste0(treatment,"_",batch))
+
+drug_perturb_batch_average_low_genes = drug_perturb_batch_average %>%
+	group_by(hgnc_symbol) %>%
+	summarise(gene_average = mean(aver_TPM)) %>%
+	ungroup() %>%
+	filter(gene_average == 0)
+
+drug_perturb_batch_average = drug_perturb_batch_average %>%
+	filter(! hgnc_symbol %in% drug_perturb_batch_average_low_genes$hgnc_symbol)
+```
+
+### By Drug Clustering
+
+```{r}
+drug_perturb_wide_treatment = drug_perturb_batch_average %>% 
+	select(-batch) %>%
+	pivot_wider(names_from = hgnc_symbol, values_from = aver_TPM)
+
+drug_umap = drug_perturb_wide_treatment %>%
+	select(-treatment,-treatment_batch) %>%
+	umap()
+
+drug_umap_plot = data.frame(umap_1 = drug_umap$layout[,1],
+														umap_2 = drug_umap$layout[,2],
+														treatment = drug_perturb_wide_treatment$treatment)
+
+library(ggrepel)
+library(BerginskiRMisc)
+ggplot(drug_umap_plot, aes(x=umap_1,y=umap_2,color=treatment,label=treatment)) + geom_text_repel() +
+	geom_point() + theme_berginski() + xlab('UMAP 1') + ylab('UMAP 2')
+ggsave(here('figures/clustering/drug_treatment_umap.png'))
+```
+
+```{r}
+perturb_dist = dist(drug_perturb_wide_treatment %>% column_to_rownames(var = "treatment_batch") %>% select(-treatment))
+hc = hclust(perturb_dist)
+
+ggdendrogram(hc)
+
+```
+
+```{r}
+drug_correlations = amap::Dist(drug_perturb_wide_treatment %>% column_to_rownames(var = "treatment_batch") %>% select(-treatment),
+															 method="correlation")
+
+#the amap package has a dist function with the correlation values I want to use,
+#but with a very strange centered pearson transformation, I'm not sure why you
+#would want to do this, so I've converted back to a normal correlation value
+#here
+# drug_correlations = (drug_correlations - 1)*-1
+hc = hclust(drug_correlations)
+
+ggdendrogram(hc)
+```
+
+### Full Genome Vis/Clustering
+
+```{r}
+library(umap)
+drug_perturb_wide_gene = drug_perturb_batch_average %>%
+	select(-batch,-treatment) %>%
+	pivot_wider(names_from = treatment_batch, values_from = aver_TPM)
+
+full_genome_umap = drug_perturb_wide_gene %>%
+	select(-hgnc_symbol) %>%
+	umap()
+```
+
+```{r}
+full_genome_umap_plot = data.frame(umap_1 = full_genome_umap$layout[,1],
+																	 umap_2 = full_genome_umap$layout[,2],
+																	 hgnc_symbol = drug_perturb_wide_gene$hgnc_symbol) %>%
+	mutate(Kinase = ifelse(hgnc_symbol %in% all_kinases$symbol,"Yes","No"),
+				 alpha = ifelse(hgnc_symbol %in% all_kinases$symbol,1,0.01))
+
+no_kinases_umap_plot = full_genome_umap_plot %>%
+	filter(! hgnc_symbol %in% all_kinases$symbol)
+
+kinases_umap_plot = full_genome_umap_plot %>%
+	filter(hgnc_symbol %in% all_kinases$symbol)
+
+ggplot(no_kinases_umap_plot, aes(x=umap_1,y=umap_2,color=Kinase)) + 
+	geom_point(stroke = 0,alpha=0.05) + 
+	geom_point(data=kinases_umap_plot, aes(x=umap_1,y=umap_2,color=Kinase), stroke = 0) +
+	theme_berginski()
+ggsave(here('figures/clustering/full_genome_umap.png'))
+```
+
+```{r}
+full_genome_dist = dist(drug_perturb_wide_gene %>% column_to_rownames(var = "hgnc_symbol"))
+hc = hclust(full_genome_dist)
+
+ggdendrogram(hc)
+```
+
+### Only Kinases
+
+```{r}
+drug_perturb_wide_kinase = drug_perturb_batch_average %>%
+	filter(hgnc_symbol %in% all_kinases$symbol) %>%
+	select(-batch,-treatment) %>%
+	pivot_wider(names_from = treatment_batch, values_from = aver_TPM)
+
+# per_gene_umap_settings = umap.defaults
+# per_gene_umap_settings$n_neighbors = 25
+# per_gene_umap_settings$min_dist = 0.01
+
+drug_umap = drug_perturb_wide_kinase %>%
+	select(-hgnc_symbol) %>%
+	umap(config = per_gene_umap_settings)
+
+drug_umap_plot = data.frame(umap_1 = drug_umap$layout[,1],
+														umap_2 = drug_umap$layout[,2],
+														hgnc_symbol = drug_perturb_wide_kinase$hgnc_symbol) %>%
+	mutate(is_dark = ifelse(hgnc_symbol %in% dark_kinases$symbol,"Yes","No"))
+
+only_light = drug_umap_plot %>%
+	filter(! hgnc_symbol %in% dark_kinases$symbol)
+
+only_dark = drug_umap_plot %>%
+	filter(hgnc_symbol %in% dark_kinases$symbol)
+
+ggplot(only_light, aes(x=umap_1,y=umap_2,color=is_dark)) + 
+	geom_point() +
+	geom_point(data = only_dark, aes(x=umap_1,y=umap_2,color=is_dark))
+```
+
+#### Clustering on Expression Differences
+
+```{r}
+kinase_dist = dist(drug_perturb_wide_kinase %>% 
+									 	# filter(hgnc_symbol != "TRIM28") %>% 
+									 	column_to_rownames(var = "hgnc_symbol"))
+kinase_cluster = hclust(kinase_dist)
+
+dd.row <- as.dendrogram(kinase_cluster)
+ddata_x <- dendro_data(dd.row)
+
+dendro_labels = label(ddata_x) %>% left_join(all_kinases %>% select(symbol,class), by=c('label'='symbol'))
+
+ggplot(segment(ddata_x)) +
+	geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+	geom_text(data = dendro_labels,
+						aes(label = label, x=x,y=0, color = class), angle=90, hjust=1)
+
+ggsave(here('figures/clustering/kinase_clustering.png'),width=80,limitsize = F)
+```
+
+#### Clustering on Expression Correlations
+
+```{r}
+#Note that the correlation method returns the centered pearson correlation so, 
+# 1 - cor(kinase_1, kinase_2), this is useful when making the tree
+kinase_correlations = amap::Dist(drug_perturb_wide_kinase %>% column_to_rownames(var = "hgnc_symbol"),
+															 method="correlation")
+
+kinase_cluster = hclust(kinase_correlations)
+
+
+dd.row <- as.dendrogram(kinase_cluster)
+ddata_x <- dendro_data(dd.row)
+
+dendro_labels = label(ddata_x) %>% left_join(all_kinases %>% select(symbol,class), by=c('label'='symbol'))
+
+ggplot(segment(ddata_x)) +
+	geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+	geom_text(data = dendro_labels,
+						aes(label = label, x=x,y=0, color = class), angle=90, hjust=1) +
+	ylim(c(-0.4,2)) +
+	theme_berginski()
+
+ggsave(here('figures/clustering/kinase_clustering_correlation.png'),width=80,limitsize = F)
+```
+
+# Normalized Clustering/Visualizations
+
+## Calculate DMSO Ratio Vals
+
+```{r}
+DMSO_genes_to_keep = drug_perturb %>%
+	filter(treatment == "DMSO") %>%
+	group_by(hgnc_symbol) %>%
+	summarise(above_1 = all(summed_TPM > 0.5)) %>%
+	filter(above_1)
+
+DMSO_samples = drug_perturb %>%
+	filter(treatment == "DMSO") %>%
+	rename(DMSO_TPM = summed_TPM) %>%
+	ungroup() %>%
+	select(-treatment)
+
+drug_perturb_ratio = drug_perturb %>%
+	left_join(DMSO_samples) %>%
+	filter(treatment != "DMSO", hgnc_symbol %in% DMSO_genes_to_keep$hgnc_symbol) %>%
+	mutate(DMSO_TPM_ratio = summed_TPM/DMSO_TPM) %>%
+	group_by(batch, treatment, hgnc_symbol) %>%
+	summarise(mean_TPM_ratio = mean(DMSO_TPM_ratio)) %>%
+	ungroup()
+```
+
+## Kinase Clustering
+
+```{r}
+drug_perturb_ratio_wide_kinases = drug_perturb_ratio %>%
+	filter(hgnc_symbol %in% all_kinases$symbol) %>%
+	mutate(treatment_batch = paste0(treatment,'_',batch)) %>%
+	select(-batch,-treatment) %>%
+	pivot_wider(names_from = treatment_batch, values_from = mean_TPM_ratio)
+
+kinase_correlations_ratio = amap::Dist(drug_perturb_ratio_wide_kinases %>% column_to_rownames(var = "hgnc_symbol"),
+															 method="correlation")
+
+kinase_cluster_ratio = hclust(kinase_correlations_ratio)
+
+dd.row <- as.dendrogram(kinase_cluster_ratio)
+ddata_x <- dendro_data(dd.row)
+
+dendro_labels = label(ddata_x) %>% left_join(all_kinases %>% select(symbol,class), by=c('label'='symbol'))
+
+ggplot(segment(ddata_x)) +
+	geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+	geom_text(data = dendro_labels,
+						aes(label = label, x=x,y=0, color = class), angle=90, hjust=1) +
+	ylim(c(-0.5,2)) +
+	geom_hline(aes(yintercept = 1.2), color='red') +
+	xlab('') +
+	theme_berginski() +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+ggsave(here('figures/clustering/kinase_clustering_ratio_norm_correlation.png'),width=80,limitsize = F)
+```
+
+
+
+### Output Kinase Cluster Lists
+
+```{r}
+kinase_hier_clusters = as.data.frame(cutree(kinase_cluster_ratio,k = 15))
+names(kinase_hier_clusters) <- "cluster_num"
+kinase_hier_clusters = kinase_hier_clusters %>%
+	rownames_to_column(var = "hgnc_symbol") %>%
+	arrange(cluster_num) %>%
+	left_join(all_kinases %>% select(class, symbol), by=c('hgnc_symbol'='symbol')) %>%
+	write_csv(here('cluster_sets/normalized_kinase_correlation_clusters.csv'))
+
+kinase_cluster_counts = kinase_hier_clusters %>% 
+	count(cluster_num, name = "Total Kinases") %>%
+	left_join(kinase_hier_clusters %>% filter(class == "Dark") %>% count(cluster_num, name="Understudied Count")) %>%
+	left_join(kinase_hier_clusters %>% filter(class == "Light") %>% count(cluster_num, name="Well Studied Count")) %>%
+	write_csv(here('cluster_sets/normalized_kinase_correlation_counts.csv'))
+```
+
+## UMAP Visualization
+
+```{r}
+library(umap)
+
+kinase_ratio_umap = drug_perturb_ratio_wide_kinases %>%
+	select(-hgnc_symbol) %>%
+	umap()
+
+kinase_ratio_plot = data.frame(umap_1 = kinase_ratio_umap$layout[,1],
+														umap_2 = kinase_ratio_umap$layout[,2],
+														hgnc_symbol = drug_perturb_ratio_wide_kinases$hgnc_symbol) %>%
+	left_join(kinase_hier_clusters) %>%
+	mutate(cluster_num = as.factor(cluster_num))
+
+library(ggrepel)
+library(BerginskiRMisc)
+ggplot(kinase_ratio_plot, aes(x=umap_1,y=umap_2, color=cluster_num)) +
+	geom_point() + theme_berginski() + xlab('UMAP 1') + ylab('UMAP 2')
+ggsave(here('figures/clustering/kinase_cluster_ratio_umap.png'))
+```
+
+```{r}
+library(umap)
+
+temp = cor(t(drug_perturb_ratio_wide_kinases %>% column_to_rownames(var = 'hgnc_symbol')))
+
+kinase_ratio_umap = umap(temp)
+
+kinase_ratio_plot = data.frame(umap_1 = kinase_ratio_umap$layout[,1],
+														umap_2 = kinase_ratio_umap$layout[,2],
+														hgnc_symbol = rownames(temp)) %>%
+	left_join(kinase_hier_clusters) %>%
+	mutate(cluster_num = as.factor(cluster_num))
+
+library(ggrepel)
+library(BerginskiRMisc)
+ggplot(kinase_ratio_plot, aes(x=umap_1,y=umap_2, color=cluster_num)) +
+	geom_point() + theme_berginski() + xlab('UMAP 1') + ylab('UMAP 2')
+ggsave(here('figures/clustering/kinase_cluster_correlation_umap.png'))
+
+```
+
+## Full Genome Clustering
+
+```{r}
+drug_perturb_ratio_wide = drug_perturb_ratio %>%
+	mutate(treatment_batch = paste0(treatment,'_',batch)) %>%
+	select(-batch,-treatment) %>%
+	pivot_wider(names_from = treatment_batch, values_from = mean_TPM_ratio)
+
+all_correlations_ratio = amap::Dist(drug_perturb_ratio_wide %>% column_to_rownames(var = "hgnc_symbol"),
+															 method="correlation")
+
+all_cluster_ratio = hclust(all_correlations_ratio)
+
+dd.row <- as.dendrogram(all_cluster_ratio)
+ddata_x <- dendro_data(dd.row)
+
+dendro_labels = label(ddata_x) %>% left_join(all_kinases %>% select(symbol,class), by=c('label'='symbol'))
+
+ggplot(segment(ddata_x)) +
+	geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+	geom_text(data = dendro_labels,
+						aes(label = label, x=x,y=0, color = class), angle=90, hjust=1) +
+	ylim(c(-0.4,2)) +
+	theme_berginski()
+
+```
+
+### Output Full Genome Cluster Lists
+
+```{r}
+all_gene_hier_clusters = as.data.frame(cutree(all_cluster_ratio,k = 15))
+names(all_gene_hier_clusters) <- "cluster_num"
+all_gene_hier_clusters = all_gene_hier_clusters %>%
+	rownames_to_column(var = "hgnc_symbol") %>%
+	arrange(cluster_num) %>%
+	left_join(all_kinases %>% select(class, symbol), by=c('hgnc_symbol'='symbol')) %>%
+	mutate(class = ifelse(is.na(class),"Non-kinase",class)) %>%
+	write_csv(here('cluster_sets/normalized_genome_correlation_clusters.csv'))
+
+kinase_cluster_counts = all_gene_hier_clusters %>%
+	count(cluster_num, name = "Total Genes") %>%
+	left_join(kinase_hier_clusters %>% filter(class == "Dark" | class == "Light") %>% count(cluster_num, name="Understudied Count")) %>%
+	left_join(kinase_hier_clusters %>% filter(class == "Dark") %>% count(cluster_num, name="Understudied Count")) %>%
+	left_join(kinase_hier_clusters %>% filter(class == "Light") %>% count(cluster_num, name="Well Studied Count")) %>%
+	write_csv(here('cluster_sets/normalized_genome_correlation_counts.csv'))
+```
+
+## Overlap between Whole Genome and Kinase Clustering
+
+```{r}
+overlap_clusters = all_gene_hier_clusters %>%
+	filter(class == "Dark" | class == "Light") %>%
+	rename(genome_cluster_num = cluster_num) %>%
+	left_join(kinase_hier_clusters) %>%
+	rename(kinase_cluster_num = cluster_num) %>%
+	count(genome_cluster_num,kinase_cluster_num)
+
+overlap_clusters %>% 
+	pivot_wider(names_from=genome_cluster_num,values_from=n,values_fill = list(n=0)) %>% 
+	arrange(kinase_cluster_num) %>% 
+	write_csv(here('cluster_sets/genome_kinase_cluster_overlap.csv'))
+```
+
+## All Gene Correlations
+
+```{r}
+drug_perturb_wide = drug_perturb_ratio %>%
+	filter(treatment != "DMSO") %>%
+	ungroup() %>%
+	select(-batch) %>%
+	pivot_wider(names_from = hgnc_symbol,values_from = mean_TPM_ratio) %>%
+	column_to_rownames(var = "treatment")
+
+all_correlations = cor(drug_perturb_wide)
+
+all_correlations_tidy = as.data.frame(all_correlations) %>%
+	rownames_to_column(var = "gene_1") %>%
+	pivot_longer(-gene_1, names_to = "gene_2", values_to = "correlation") %>%
+	filter(gene_1 > gene_2)
+
+all_correlations_tidy_kinase = all_correlations_tidy %>%
+	filter(gene_1 %in% all_kinases$symbol | gene_2 %in% all_kinases$symbol)
+
+# all_correlations_tidy_filter = all_correlations_tidy %>%
+# 	filter(abs(correlation) > 0.4)
+
+# all_correlations_tidy_filter_dark = all_correlations_tidy_filter %>%
+# 	filter(kinase_1 %in% dark_kinases$symbol | kinase_2 %in% dark_kinases$symbol)
+
+# DK_correlation_hit_count = data.frame(kinases = c(all_correlations_tidy_filter_dark$kinase_1,all_correlations_tidy_filter_dark$kinase_2)) %>% 
+# 	count(kinases) %>% 
+# 	arrange(desc(n))
+```
+
+```{r}
+kmeans_results = kmeans(all_correlations, 50)
+kmeans_results_assignments = as.data.frame(kmeans_results$cluster) %>%
+	rename(cluster_num = `kmeans_results$cluster`) %>%
+	rownames_to_column(var = "gene") %>%
+	arrange(desc(cluster_num)) %>%
+	identity()
+
+PKMYT1_cluster = kmeans_results_assignments %>%
+	filter(cluster_num == kmeans_results_assignments %>% filter(kinase == "PKMYT1") %>% pull(cluster_num))
+```
+
+## Fold Change Analysis
+
+```{r}
+drug_perturb_means = drug_perturb %>%
+	group_by(hgnc_symbol, treatment, batch) %>%
+	summarise(mean_TPM = mean(summed_TPM)) %>%
+	identity()
+
+drug_perturb_means_DMSO = drug_perturb_means %>%
+	filter(treatment == "DMSO") %>%
+	select(hgnc_symbol, mean_TPM, batch) %>%
+	ungroup() %>%
+	group_by(batch) %>%
+	rename(mean_DMSO_TPM = mean_TPM) %>%
+	select(-treatment)
+
+drug_perturb_ratio = drug_perturb_means %>%
+	left_join(drug_perturb_means_DMSO) %>%
+	filter(mean_DMSO_TPM >= 10) %>%
+	mutate(DMSO_TPM_ratio = mean_TPM/mean_DMSO_TPM,
+				 log_DMSO_TPM_ratio = log2(DMSO_TPM_ratio)) %>%
+	filter(treatment != "DMSO")
+
+count_fold2_change = drug_perturb_ratio %>%
+	filter(mean_TPM > 10) %>%
+	group_by(treatment, batch) %>%
+	summarise(num_fold2_genes = sum(log_DMSO_TPM_ratio > 1 | log_DMSO_TPM_ratio < -1))
+```
+
+```{r}
+DMSO_comps = drug_perturb_means %>%
+	filter(treatment == "DMSO")
+
+DMSO_batch_1 = DMSO_comps %>%
+	filter(batch == 1) %>%
+	rename(mean_TPM_DMSO_1 = mean_TPM) %>%
+	select(hgnc_symbol,mean_TPM_DMSO_1)
+
+DMSO_batch_2 = DMSO_comps %>%
+	filter(batch == 2) %>%
+	rename(mean_TPM_DMSO_2 = mean_TPM) %>%
+	select(hgnc_symbol,mean_TPM_DMSO_2)
+
+DMSO_batch_3 = DMSO_comps %>%
+	filter(batch == 3) %>%
+	rename(mean_TPM_DMSO_3 = mean_TPM) %>%
+	select(hgnc_symbol,mean_TPM_DMSO_3)
+
+
+```
+
+```{r}
+count_fold2_change_kinases = drug_perturb_ratio %>%
+	filter(mean_TPM > 10, hgnc_symbol %in% all_kinases$symbol) %>%
+	group_by(treatment, batch) %>%
+	summarise(num_fold2_genes = sum(log_DMSO_TPM_ratio > 0.5 | log_DMSO_TPM_ratio < -0.5))
+```

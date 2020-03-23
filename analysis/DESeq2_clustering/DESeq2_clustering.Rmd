@@ -1,0 +1,118 @@
+---
+title: "DESeq2 Output Clustering"
+author: "Matthew Berginski"
+date: "3/23/2020"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ggdendro)
+library(here)
+library(BerginskiRMisc)
+library(DarkKinaseTools)
+library(broom)
+```
+
+# Read in DESeq2 Normalized Log Changes
+
+```{r, cache=TRUE, include=FALSE}
+DESeq_ratios = read_csv(here('DESeq2_results.csv.gz'))
+```
+
+## Kinase Clustering
+
+```{r kinase_tree, cache=TRUE, include=FALSE}
+high_missing_ratio_kinases = DESeq_ratios %>%
+	filter(hgnc_symbol %in% all_kinases$symbol,is.na(log2FoldChange)) %>%
+	count(hgnc_symbol) %>%
+	filter(n > 2) %>%
+	pull(hgnc_symbol)
+
+drug_perturb_ratio_wide_kinases = DESeq_ratios %>%
+	filter(hgnc_symbol %in% all_kinases$symbol & ! hgnc_symbol %in% high_missing_ratio_kinases) %>%
+	mutate(treatment_batch = paste0(treatment,'_',batch)) %>%
+	select(treatment_batch,hgnc_symbol,log2FoldChange) %>%
+	mutate(log2FoldChange = ifelse(is.na(log2FoldChange), 0, log2FoldChange)) %>%
+	pivot_wider(names_from = treatment_batch, values_from = log2FoldChange)
+
+kinase_correlations_ratio = amap::Dist(drug_perturb_ratio_wide_kinases %>% 
+																			 	column_to_rownames(var = "hgnc_symbol"),
+																			 method="correlation")
+
+kinase_cluster_ratio = hclust(kinase_correlations_ratio)
+
+dd.row <- as.dendrogram(kinase_cluster_ratio)
+ddata_x <- dendro_data(dd.row)
+
+dendro_labels = label(ddata_x) %>% left_join(all_kinases %>% select(symbol,class), by=c('label'='symbol'))
+
+ggplot(segment(ddata_x)) +
+	geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+	geom_text(data = dendro_labels,
+						aes(label = label, x=x,y=0, color = class), angle=90, hjust=1) +
+	ylim(c(-0.5,2)) +
+	geom_hline(aes(yintercept = 1.2), color='red') +
+	xlab('') +
+	theme_berginski() +
+	theme(axis.title.x=element_blank(),
+				axis.text.x=element_blank(),
+				axis.ticks.x=element_blank())
+
+ggsave(here('figures/clustering/kinase_clustering_DESeq_correlation.png'),width=80,limitsize = F)
+```
+
+## Output Kinase Cluster Lists
+
+```{r}
+kinase_hier_clusters = as.data.frame(cutree(kinase_cluster_ratio,k = 15))
+names(kinase_hier_clusters) <- "cluster_num"
+kinase_hier_clusters = kinase_hier_clusters %>%
+	rownames_to_column(var = "hgnc_symbol") %>%
+	arrange(cluster_num, hgnc_symbol) %>%
+	left_join(all_kinases %>% select(class, symbol), by=c('hgnc_symbol'='symbol')) %>%
+	write_csv(here('cluster_sets/DESeq_kinase_correlation_clusters.csv'))
+
+kinase_cluster_counts = kinase_hier_clusters %>% 
+	count(cluster_num, name = "Total Kinases") %>%
+	left_join(kinase_hier_clusters %>% filter(class == "Dark") %>% count(cluster_num, name="Understudied Count")) %>%
+	left_join(kinase_hier_clusters %>% filter(class == "Light") %>% count(cluster_num, name="Well Studied Count")) %>%
+	write_csv(here('cluster_sets/DESeq_kinase_correlation_counts.csv'))
+```
+
+## Visualize Changes in Kinase Expression
+
+```{r cluster_profiles}
+treatment_summary = DESeq_ratios %>% 
+	group_by(treatment) %>%
+	summarise(mean_log2 = mean(log2FoldChange,na.rm=T),
+						lower_log2 = tidy(t.test(log2FoldChange))$conf.low,
+						upper_log2 = tidy(t.test(log2FoldChange))$conf.high)
+
+cluster_treatment_summary = DESeq_ratios %>% 
+	left_join(kinase_hier_clusters) %>% 
+	filter(!is.na(cluster_num)) %>%
+	group_by(cluster_num,treatment) %>% 
+	summarise(mean_log2 = mean(log2FoldChange,na.rm=T),
+						lower_log2 = tidy(t.test(log2FoldChange))$conf.low,
+						upper_log2 = tidy(t.test(log2FoldChange))$conf.high)
+
+for (this_cluster in sort(unique(kinase_hier_clusters$cluster_num))) {
+	this_plot = ggplot(cluster_treatment_summary %>% filter(cluster_num == this_cluster),
+				 aes(x=treatment,y=mean_log2, group=cluster_num)) +
+		geom_ribbon(aes(ymin=lower_log2,ymax=upper_log2),alpha=0.1) +
+		ggtitle(paste('Drug Response Profile for Cluster: ', this_cluster)) +
+		
+		geom_ribbon(data = treatment_summary, 
+								aes(ymin=lower_log2,ymax=lower_log2, group='overall'), color='blue',alpha=0.25) +
+		geom_line(data = treatment_summary, aes(x=treatment,y=mean_log2, group='overall'), color='blue',alpha=0.5) +
+		
+		geom_line() +
+		theme_berginski() +
+		theme(axis.text.x=element_text(angle = -90, hjust = 0,vjust=0.5)) +
+		xlab('') +
+		ylab('Average Shrunk Log2 Fold Change') +
+		ylim(c(-2.5,2.5))
+	print(this_plot)
+}
+```

@@ -337,6 +337,29 @@ drug_perturb_ratio = drug_perturb %>%
 	summarise(mean_TPM_ratio = mean(DMSO_TPM_ratio)) %>%
 	ungroup()
 ```
+Bit of code to check whether the DESeq2 result line up with my ad-hoc ratios
+
+```{r}
+temp = drug_perturb_ratio %>% 
+	mutate(full_name = case_when(
+		treatment == "Dina" ~ "Dinaciclib",
+		treatment == "Ent" ~ "Entinostat",
+		treatment == "JIB-04 low" ~ "JIB-04 (low dose)",
+		treatment == "MK2206" ~ "MK2206",
+		treatment == "Tram" ~ "Trametinib",
+		treatment == "JIB-04 high" ~ "JIB-04 (high dose)",
+		treatment == "Navi" ~ "Navitoclax",
+		treatment == "Paclit" ~ "Paclitaxel",
+		treatment == "Rux" ~ "Ruxolibinib",
+		treatment == "SGC" ~ "SGCCP30",
+		treatment == "Alis" ~ "Alisertib",
+		treatment == "Bort" ~ "Bortezomib",
+		treatment == "CoCl2" ~ "CoCl2",
+		treatment == "FCCP" ~ "FCCP",
+		treatment == "Palbo" ~ "Palbociclib"
+	)) %>% select(-treatment) %>% rename(treatment = full_name) %>%
+	left_join(DESeq2_estimates %>% select(log2FoldChange, batch, treatment, hgnc_symbol))
+```
 
 ## Kinase Clustering
 
@@ -539,62 +562,4 @@ kmeans_results_assignments = as.data.frame(kmeans_results$cluster) %>%
 
 PKMYT1_cluster = kmeans_results_assignments %>%
 	filter(cluster_num == kmeans_results_assignments %>% filter(kinase == "PKMYT1") %>% pull(cluster_num))
-```
-
-## Fold Change Analysis
-
-```{r}
-drug_perturb_means = drug_perturb %>%
-	group_by(hgnc_symbol, treatment, batch) %>%
-	summarise(mean_TPM = mean(summed_TPM)) %>%
-	identity()
-
-drug_perturb_means_DMSO = drug_perturb_means %>%
-	filter(treatment == "DMSO") %>%
-	select(hgnc_symbol, mean_TPM, batch) %>%
-	ungroup() %>%
-	group_by(batch) %>%
-	rename(mean_DMSO_TPM = mean_TPM) %>%
-	select(-treatment)
-
-drug_perturb_ratio = drug_perturb_means %>%
-	left_join(drug_perturb_means_DMSO) %>%
-	filter(mean_DMSO_TPM >= 10) %>%
-	mutate(DMSO_TPM_ratio = mean_TPM/mean_DMSO_TPM,
-				 log_DMSO_TPM_ratio = log2(DMSO_TPM_ratio)) %>%
-	filter(treatment != "DMSO")
-
-count_fold2_change = drug_perturb_ratio %>%
-	filter(mean_TPM > 10) %>%
-	group_by(treatment, batch) %>%
-	summarise(num_fold2_genes = sum(log_DMSO_TPM_ratio > 1 | log_DMSO_TPM_ratio < -1))
-```
-
-```{r}
-DMSO_comps = drug_perturb_means %>%
-	filter(treatment == "DMSO")
-
-DMSO_batch_1 = DMSO_comps %>%
-	filter(batch == 1) %>%
-	rename(mean_TPM_DMSO_1 = mean_TPM) %>%
-	select(hgnc_symbol,mean_TPM_DMSO_1)
-
-DMSO_batch_2 = DMSO_comps %>%
-	filter(batch == 2) %>%
-	rename(mean_TPM_DMSO_2 = mean_TPM) %>%
-	select(hgnc_symbol,mean_TPM_DMSO_2)
-
-DMSO_batch_3 = DMSO_comps %>%
-	filter(batch == 3) %>%
-	rename(mean_TPM_DMSO_3 = mean_TPM) %>%
-	select(hgnc_symbol,mean_TPM_DMSO_3)
-
-
-```
-
-```{r}
-count_fold2_change_kinases = drug_perturb_ratio %>%
-	filter(mean_TPM > 10, hgnc_symbol %in% all_kinases$symbol) %>%
-	group_by(treatment, batch) %>%
-	summarise(num_fold2_genes = sum(log_DMSO_TPM_ratio > 0.5 | log_DMSO_TPM_ratio < -0.5))
 ```

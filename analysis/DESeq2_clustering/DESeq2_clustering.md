@@ -57,14 +57,14 @@ cluster_treatment_summary = DESeq_ratios %>%
 for (this_cluster in sort(unique(kinase_hier_clusters$cluster_num))) {
     this_plot = ggplot(cluster_treatment_summary %>% filter(cluster_num == this_cluster),
                  aes(x=treatment,y=mean_log2, group=cluster_num)) +
-        geom_ribbon(aes(ymin=lower_log2,ymax=upper_log2),alpha=0.1) +
+        geom_pointrange(aes(ymin=lower_log2,ymax=upper_log2)) +
         ggtitle(paste('Drug Response Profile for Cluster: ', this_cluster)) +
         
-        geom_ribbon(data = treatment_summary, 
+        geom_pointrange(data = treatment_summary, 
                                 aes(ymin=lower_log2,ymax=lower_log2, group='overall'), color='blue',alpha=0.25) +
-        geom_line(data = treatment_summary, aes(x=treatment,y=mean_log2, group='overall'), color='blue',alpha=0.5) +
+        # geom_line(data = treatment_summary, aes(x=treatment,y=mean_log2, group='overall'), color='blue',alpha=0.5) +
         
-        geom_line() +
+        
         theme_berginski() +
         theme(axis.text.x=element_text(angle = -90, hjust = 0,vjust=0.5)) +
         xlab('') +

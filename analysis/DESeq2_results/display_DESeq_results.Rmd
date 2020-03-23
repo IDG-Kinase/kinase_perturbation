@@ -1,0 +1,17 @@
+---
+title: "DESeq2 Drug Perturbation Results"
+author: "Matthew Berginski"
+date: "3/23/2020"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(kableExtra)
+library(here)
+```
+
+```{r}
+DESeq2_summary = read_csv(here('DESeq2_summary.csv'))
+kable(DESeq2_summary)
+```

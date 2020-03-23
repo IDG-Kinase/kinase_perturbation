@@ -11,6 +11,7 @@ library("DESeq2")
 
 library("AnnotationDbi")
 library("org.Hs.eg.db")
+library(biomaRt)
 
 library(DarkKinaseTools)
 library(here)
@@ -19,13 +20,12 @@ library(glue)
 ```
 
 ```{r}
-if (! file.exists(here('transcript_to_hgnc.csv'))) {
-	ensembl <- biomaRt::useMart("ensembl")
-	ensembl = biomaRt::useDataset("hsapiens_gene_ensembl",mart=ensembl)
-	transcript_to_hgnc = biomaRt::getBM(attributes = c('ensembl_transcript_id','hgnc_symbol'), mart = ensembl)
-	write_csv(transcript_to_hgnc, here('transcript_to_hgnc.csv'))
+if (! file.exists(here('gene_to_hgnc.csv'))) {
+	ensembl = biomaRt::useMart("ensembl",dataset="hsapiens_gene_ensembl")
+	gene_to_hgnc = biomaRt::getBM(attributes = c('ensembl_gene_id','hgnc_symbol'), mart = ensembl)
+	write_csv(gene_to_hgnc, here('gene_to_hgnc.csv'))
 } else {
-	transcript_to_hgnc = readr::read_csv(here('transcript_to_hgnc.csv'))
+	gene_to_hgnc = readr::read_csv(here('gene_to_hgnc.csv'))
 }
 ```
 
@@ -41,19 +41,19 @@ run_DESeq2 <- function(drug_perturb_files) {
 	drug_perturb_files$batch = as.factor(drug_perturb_files$batch)
 	drug_perturb_files$rep = as.factor(drug_perturb_files$rep)
 	
-	drug_perturb_exp = tximeta(drug_perturb_files)
+	drug_perturb_exp = summarizeToGene(tximeta(drug_perturb_files))
 	dds <- DESeqDataSet(drug_perturb_exp, design = ~treatment)
 	keep <- rowSums(counts(dds)) > 1
 	dds <- dds[keep,]
 	
 	dds_analysis <- DESeq(dds)
-	dds_results = results(dds_analysis, alpha=0.05, lfcThreshold = 1)
+	dds_results = results(dds_analysis)
 	
 	dds_results_filtered = as.data.frame(dds_results)
-	dds_results_filtered$ensembl_transcript_id = rownames(dds_results)
+	dds_results_filtered$ensembl_gene_id = rownames(dds_results)
 	dds_results_filtered = dds_results_filtered %>%
-		filter(padj <= 0.05) %>%
-		left_join(transcript_to_hgnc) %>%
+		filter(abs(log2FoldChange) >= 1, padj <= 0.05) %>%
+		left_join(gene_to_hgnc) %>%
 		filter(!is.na(hgnc_symbol))
 	
 	dds_results_filtered_kinase = dds_results_filtered %>%
@@ -61,12 +61,14 @@ run_DESeq2 <- function(drug_perturb_files) {
 	
 	dds_results_filtered_dark_kinase = dds_results_filtered %>%
 		filter(hgnc_symbol %in% dark_kinases$symbol)
-	
+
 	return(data.frame(
 		number_2fold = dim(dds_results_filtered)[1],
 		num_kinases = dim(dds_results_filtered_kinase)[1],
 		num_dark_kinases = dim(dds_results_filtered_dark_kinase)[1],
-		dk_diff_str = glue_collapse(sort(dds_results_filtered_dark_kinase$hgnc_symbol), sep=" | ")
+		dk_diff_str = ifelse(dim(dds_results_filtered_dark_kinase)[1] == 0,
+												 "",
+												 glue_collapse(sort(dds_results_filtered_dark_kinase$hgnc_symbol), sep=" | "))
 	))
 }
 ```

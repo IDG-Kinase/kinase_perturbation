@@ -62,8 +62,6 @@ for (this_cluster in sort(unique(kinase_hier_clusters$cluster_num))) {
         
         geom_pointrange(data = treatment_summary, 
                                 aes(ymin=lower_log2,ymax=lower_log2, group='overall'), color='blue',alpha=0.25) +
-        # geom_line(data = treatment_summary, aes(x=treatment,y=mean_log2, group='overall'), color='blue',alpha=0.5) +
-        
         
         theme_berginski() +
         theme(axis.text.x=element_text(angle = -90, hjust = 0,vjust=0.5)) +

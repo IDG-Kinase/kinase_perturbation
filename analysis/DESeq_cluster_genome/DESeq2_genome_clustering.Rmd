@@ -1,0 +1,197 @@
+---
+title: "Genome Clustering"
+author: "Matthew Berginski"
+date: "4/7/2020"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ggdendro)
+library(here)
+library(umap)
+library(broom)
+library(tictoc)
+
+library(BerginskiRMisc)
+library(DarkKinaseTools)
+```
+
+# Read in DESeq2 Normalized Log Changes
+
+```{r, cache=TRUE, include=FALSE}
+DESeq_ratios = read_csv(here('DESeq2_results.csv.gz'))
+```
+
+## Data Organizing/Filtering
+
+```{r kinase_tree, cache=TRUE, include=FALSE}
+high_missing_ratio_genes = DESeq_ratios %>%
+	filter(is.na(log2FoldChange)) %>%
+	count(hgnc_symbol) %>%
+	filter(n > 2) %>%
+	pull(hgnc_symbol)
+
+drug_perturb_ratio_wide_genes = DESeq_ratios %>%
+	filter(! hgnc_symbol %in% high_missing_ratio_genes) %>%
+	#Block a few ENSG IDs that are associated with a single HGNC symbol
+	filter(ensembl_gene_id != "ENSG00000285292" &
+				 	ensembl_gene_id != "ENSG00000285258" &
+				 	ensembl_gene_id != "ENSG00000168255" &
+				 	ensembl_gene_id != "ENSG00000284770") %>%
+	mutate(treatment_batch = paste0(treatment,'_',batch)) %>%
+	select(treatment_batch,hgnc_symbol,log2FoldChange) %>%
+	mutate(log2FoldChange = ifelse(is.na(log2FoldChange), 0, log2FoldChange)) %>%
+	pivot_wider(names_from = treatment_batch, values_from = log2FoldChange)
+
+drug_perturb_ratio_wide_experiments = DESeq_ratios %>%
+	filter(! hgnc_symbol %in% high_missing_ratio_genes) %>%
+	#Block a few ENSG IDs that are associated with a single HGNC symbol
+	filter(ensembl_gene_id != "ENSG00000285292" &
+				 	ensembl_gene_id != "ENSG00000285258" &
+				 	ensembl_gene_id != "ENSG00000168255" &
+				 	ensembl_gene_id != "ENSG00000284770") %>%
+	select(treatment,hgnc_symbol,log2FoldChange) %>%
+	mutate(log2FoldChange = ifelse(is.na(log2FoldChange), 0, log2FoldChange)) %>%
+	pivot_wider(names_from = hgnc_symbol, values_from = log2FoldChange)
+```
+
+## Experiment Correlations
+
+```{r}
+tic()
+genome_correlations_experiments = amap::Dist(drug_perturb_ratio_wide_experiments %>%
+																						 	column_to_rownames(var = "treatment"),
+																						 method="correlation")
+toc();
+```
+```{r correlation histogram}
+correlation_vals = data.frame(
+	cor_vals = as.vector((genome_correlations_experiments - 1)*-1)
+)
+
+ggplot(correlation_vals, aes(x=cor_vals)) + 
+	geom_histogram() +
+	xlab('Pairwise Treatment Correlations') +
+	ylab('') +
+	geom_vline(aes(xintercept = mean(cor_vals)), color='red') +
+	theme_berginski()
+ggsave(here('figures/genome_clustering/experiment_correlation_vals.png'),height=4,width=4)
+```
+
+```{r, cache=TRUE, include=FALSE}
+experiment_cluster_ratio = hclust(genome_correlations_experiments)
+
+dd.row <- as.dendrogram(experiment_cluster_ratio)
+ddata_x <- dendro_data(dd.row)
+
+dendro_labels = label(ddata_x)
+```
+
+```{r experiment cluster plot}
+ggplot(segment(ddata_x)) +
+	geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+	geom_text(data = dendro_labels,
+						aes(label = label, x=x,y=0), angle=90, hjust=1.1) +
+	xlab('') +
+	theme_berginski() +
+	theme(axis.title.x=element_blank(),
+				axis.text.x=element_blank(),
+				axis.ticks.x=element_blank()) +
+	# scale_y_discrete("Correlation Distance", waiver(), waiver(), c(0,2)) +
+	scale_y_continuous("Genome Correlation Distance", breaks = c(0,0.5,1), limits = c(-0.8,NA)) +
+	NULL
+ggsave(here('figures/genome_clustering/experiment_cluster_tree.png'),height=4,width=4)
+trimImage(here('figures/genome_clustering/experiment_cluster_tree.png'))
+```
+
+## Gene Correlations
+
+```{r}
+tic()
+genome_correlations_ratio = amap::Dist(drug_perturb_ratio_wide_genes %>%
+																			 	column_to_rownames(var = "hgnc_symbol"),
+																			 method="correlation")
+toc();
+```
+
+```{r full genome tree}
+genome_cluster_ratio = hclust(genome_correlations_ratio)
+
+dd.row <- as.dendrogram(genome_cluster_ratio)
+ddata_x <- dendro_data(dd.row)
+
+dendro_labels = label(ddata_x) %>%
+	left_join(all_kinases %>% select(symbol,class), by=c('label'='symbol')) %>%
+	mutate(class = case_when(
+		is.na(class) ~ "Non-kinase",
+		TRUE ~ class
+	))
+
+end_points = ddata_x$segments %>% filter(yend == 0) %>%
+	left_join(dendro_labels, by=c('x'='x'))
+
+ggplot(segment(ddata_x)) +
+	geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+	# geom_text(data = dendro_labels,
+	# 					aes(label = label, x=x,y=0, color = class), angle=90, hjust=1) +
+	# ylim(c(-0.5,2)) +
+	# geom_hline(aes(yintercept = 1.2), color='red') +
+	xlab('') +
+	# geom_point(data = end_points, mapping = aes(x=xend,y=yend-0.02, color=class),shape='\u007C') +
+	geom_rect(data = end_points, mapping = aes(xmin=xend-0.5,xmax=xend+0.5,ymin=yend-0.25,ymax=yend-0.01,fill=class)) +
+	theme_berginski() +
+	theme(axis.title.x=element_blank(),
+				axis.text.x=element_blank(),
+				axis.ticks.x=element_blank()) +
+	scale_y_continuous(name = "Correlation Distance",breaks=seq(0,2,by=0.5)) +
+	scale_x_continuous(name = "",expand=c(0,0)) +
+	scale_fill_manual(name = "Kinase Type",
+										values = c("Dark" = "red", "Light" = "blue", "Non-kinase" = rgb(0,0,0,0)))
+
+ggsave(here('figures/genome_clustering/genome_clustering_DESeq_correlation.png'),width=20,height=3*0.9,dpi = 300)
+trimImage(here('figures/genome_clustering/genome_clustering_DESeq_correlation.png'))
+```
+
+## Associated Genes
+
+```{r all cluster num}
+# genome_hier_all_clusters = cutree(genome_cluster_ratio,k = 2:dim(drug_perturb_ratio_wide_genes)[1]) %>%
+# 	as.data.frame() %>% 
+# 	rownames_to_column(var = "symbol") %>% 
+# 	pivot_longer(-symbol, 
+# 							 names_to = "num_total_clusters", 
+# 							 values_to = "cluster_id") %>% 
+# 	mutate(num_total_clusters = as.factor(num_total_clusters)) %>% 
+# 	left_join(all_kinases %>% select(class,symbol)) %>% 
+# 	arrange(num_total_clusters,symbol)
+# 
+# cluster_sizes = genome_hier_all_clusters %>% 
+# 	group_by(num_total_clusters,cluster_id) %>% 
+# 	count(name = "num_in_cluster") 
+# 
+# genome_hier_all_clusters = genome_hier_all_clusters %>% 
+# 	left_join(cluster_sizes)
+```
+
+```{r}
+# dir.create(here('figures/genome_clustering/associated_genes'), showWarnings = F)
+# kinase_in_clusters = genome_hier_all_clusters %>% 
+# 	filter(symbol %in% all_kinases$symbol) %>%
+# 	pull(symbol) %>%
+# 	unique()
+# 
+# for (this_gene in kinase_in_clusters) {
+# 	gene_set = get_associated_genes(cluster_sets = genome_hier_all_clusters, 
+# 																	gene_name = this_gene, 
+# 																	max_clustered_genes = 20)
+# 	
+# 	gene_table = build_gene_associate_table_text(gene_set)
+# 	p<-tableGrob(gene_table %>%
+# 							 	rename("Associated Genes" = "associated_genes"),
+# 							 rows = NULL)
+# 	grid.arrange(p)
+# 	ggsave(here('figures/genome_clustering/associated_genes',paste0(this_gene,'.png')),p)
+# 	trimImage(here('figures/genome_clustering/associated_genes',paste0(this_gene,'.png')))
+# }
+```

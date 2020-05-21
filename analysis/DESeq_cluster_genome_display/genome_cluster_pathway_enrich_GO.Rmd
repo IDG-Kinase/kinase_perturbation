@@ -1,0 +1,99 @@
+---
+title: "Genome Clustering - Pathway Enrichment Analysis - GO Terms"
+author: "Matthew Berginski"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+library(hypeR)
+library(tidyverse)
+library(magrittr)
+library(here)
+library(DarkKinaseTools)
+library(glue)
+library(kableExtra)
+
+number_of_clusters = 20
+```
+
+This preliminary report details the results of looking for pathway enrichment in each of the groups of genes produced by hierarchical clustering of the drug perturbations. I've cut the the data into `r number_of_clusters`, but this value can be changed if we decide on a different value. Otherwise, this analysis focuses on enriched pathways in the KEGG database. Specifically, this analysis uses the GO Biological Processes segment from: https://www.gsea-msigdb.org/gsea/msigdb.
+
+As for this report, the panel on the left is sorted by the number of dark kinases in the cluster and displays both the number of pathway hits and dark kinases in the cluster. The number of each cluster is arbitrary. The entry for each cluster displays the kinases associated with the cluster along with the number of non-kinases genes. Below this table are the pathways that passed the enrichment analysis at the 0.01 false discovery rate level. I also corrected for running this analysis for all `r number_of_clusters` clusters.
+
+
+```{r, include=FALSE}
+genome_cluster_ratio = read_rds(here('cluster_sets/full_genome_hclust.rds'))
+
+tree_cut = cutree(genome_cluster_ratio,k = number_of_clusters) %>% 
+	as.data.frame() %>% 
+	rownames_to_column(var = "symbol") %>%
+	janitor::clean_names() %>%
+	rename(cluster_id = x) %>%
+	left_join(all_kinases %>% select(symbol, class)) %>%
+	mutate(class = ifelse(is.na(class),"Non-kinase",class))
+
+num_dk_per_cluster = tree_cut %>%
+	group_by(cluster_id) %>%
+	summarise(num_dk = sum(class == "Dark"),
+						num_lk = sum(class == "Light"),
+						num_nk = sum(class == "Non-kinase")) %>%
+	arrange(desc(num_dk,num_lk,num_nk))
+
+genesets <- msigdb_gsets("Homo sapiens", "C5", "BP")
+
+cluster_vis_text = ''
+
+for (this_cluster in num_dk_per_cluster$cluster_id) {
+	this_gene_set = tree_cut %>% filter(cluster_id == this_cluster)
+	enriched_sets = hypeR(this_gene_set$symbol, 
+												genesets, 
+												test="hypergeometric", 
+												background=50000, 
+												fdr=0.01/number_of_clusters)
+	
+	# enriched_sets$data = enriched_sets$data %>% 
+	# 	mutate(label = paste0("[",label, "](https://www.gsea-msigdb.org/gsea/msigdb/cards/",label,")")) 
+	
+	these_LK = this_gene_set %>% filter(class == "Light")
+	these_DK = this_gene_set %>% filter(class == "Dark")
+	these_non_kinase = this_gene_set %>% filter(class == "Non-kinase")
+	
+	gene_table = data.frame(gene_type = c(paste0('Dark Kinase (', dim(these_DK)[1], ')'), 
+																				paste0('Light Kinase (', dim(these_LK)[1], ')'), 
+																				'Non-kinase Count'),
+													info = c(
+														ifelse(dim(these_DK)[1] == 0,
+																	 "",
+																	 glue_collapse(sort(these_DK$symbol), sep = ", ")),
+														ifelse(dim(these_LK)[1] == 0,
+																	 "",
+																	 glue_collapse(sort(these_LK$symbol), sep = ", ")),
+																	 length(these_non_kinase$symbol)))
+	
+	pathways_text = paste0('Pathways: ', dim(enriched_sets$data)[1])
+	DKs_text = paste0(' DK: ', dim(these_DK)[1])
+	
+	section_text = paste0('\n\n## Num: ', this_cluster,' (', pathways_text, DKs_text,  ')\n\n')
+
+	gene_table = gene_table %>%
+		kable() %>%
+		kable_styling()
+
+	pathway_table = enriched_sets$data %>% 
+					select(-background) %>%
+					kable() %>% 
+					kable_styling() %>%
+					scroll_box(width = "100%", height = "500px")
+	
+	cluster_vis_text = paste0(cluster_vis_text,
+														section_text,
+														gene_table,
+														pathway_table)
+}
+```
+
+`r cluster_vis_text`

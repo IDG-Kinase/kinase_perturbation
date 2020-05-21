@@ -2,4 +2,6 @@ raw_data
 .Rproj.user
 .Rhistory
 salmon_alignments
+
 analysis/*/*_cache
+analysis/*/*.html

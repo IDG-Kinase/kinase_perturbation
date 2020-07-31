@@ -7,3 +7,4 @@ analysis/*/*_cache
 analysis/*/*.html
 
 indexes/Homo_sapiens*
+Transcripts/Homo_sapiens*

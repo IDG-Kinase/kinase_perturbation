@@ -5,3 +5,5 @@ salmon_alignments
 
 analysis/*/*_cache
 analysis/*/*.html
+
+indexes/Homo_sapiens*

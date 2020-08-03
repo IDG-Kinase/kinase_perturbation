@@ -1,17 +1,11 @@
+library("tximeta")
+library("DESeq2")
+
+library("AnnotationDbi")
+library("org.Hs.eg.db")
+
 run_DESeq2 <- function(drug_perturb_files) {
-	drug_perturb_files = drug_perturb_files %>%
-		mutate(names = paste0(treatment,"_",batch,"_",rep))
-	
-	drug_perturb_files$batch = as.factor(drug_perturb_files$batch)
-	drug_perturb_files$rep = as.factor(drug_perturb_files$rep)
-	
-	drug_perturb_exp = summarizeToGene(tximeta(drug_perturb_files))
-	dds <- DESeqDataSet(drug_perturb_exp, design = ~treatment)
-	keep <- rowSums(counts(dds)) > 1
-	dds <- dds[keep,]
-	
-	dds_analysis <- DESeq(dds)
-	dds_results = results(dds_analysis)
+	dds_results = get_full_DESeq_results(drug_perturb_files)
 	
 	dds_results_filtered = as.data.frame(dds_results)
 	dds_results_filtered$ensembl_gene_id = rownames(dds_results)
@@ -34,4 +28,23 @@ run_DESeq2 <- function(drug_perturb_files) {
 												 "",
 												 glue_collapse(sort(dds_results_filtered_dark_kinase$hgnc_symbol), sep=" | "))
 	))
+}
+
+get_full_DESeq_results <- function(drug_perturb_files) {
+	drug_perturb_files = drug_perturb_files %>%
+		mutate(names = paste0(treatment,"_",batch,"_",rep))
+	
+	drug_perturb_files$batch = as.factor(drug_perturb_files$batch)
+	drug_perturb_files$rep = as.factor(drug_perturb_files$rep)
+	
+	drug_perturb_exp = summarizeToGene(tximeta(drug_perturb_files))
+	dds <- DESeqDataSet(drug_perturb_exp, design = ~treatment)
+	keep <- rowSums(counts(dds)) > 1
+	dds <- dds[keep,]
+	
+	dds_analysis <- DESeq(dds)
+	dds_results = results(dds_analysis)
+	dds_results = lfcShrink(dds_analysis, coef=resultsNames(dds_analysis)[2], type="apeglm")
+	
+	return(dds_results)
 }

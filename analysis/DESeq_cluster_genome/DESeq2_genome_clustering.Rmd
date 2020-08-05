@@ -1,7 +1,7 @@
 ---
 title: "Genome Clustering"
 author: "Matthew Berginski"
-date: "4/7/2020"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: github_document
 ---
 
@@ -112,12 +112,13 @@ tic()
 genome_correlations_ratio = amap::Dist(drug_perturb_ratio_wide_genes %>%
 																			 	column_to_rownames(var = "hgnc_symbol"),
 																			 method="correlation")
+
+genome_cluster_ratio = hclust(genome_correlations_ratio) %>%
+	write_rds(here('cluster_sets/full_genome_hclust.rds'))
 toc();
 ```
 
 ```{r full genome tree}
-genome_cluster_ratio = hclust(genome_correlations_ratio)
-
 dd.row <- as.dendrogram(genome_cluster_ratio)
 ddata_x <- dendro_data(dd.row)
 
@@ -153,25 +154,143 @@ ggsave(here('figures/genome_clustering/genome_clustering_DESeq_correlation.png')
 trimImage(here('figures/genome_clustering/genome_clustering_DESeq_correlation.png'))
 ```
 
+## Cluster Profiles
+
+```{r cluster_profiles}
+genome_hier_clusters = as.data.frame(cutree(genome_cluster_ratio,k = 20))
+names(genome_hier_clusters) <- "cluster_num"
+genome_hier_clusters = genome_hier_clusters %>%
+	rownames_to_column(var = "hgnc_symbol")
+
+genome_DESeq_ratios_clusters = DESeq_ratios %>% 
+	right_join(genome_hier_clusters) %>% 
+	left_join(all_kinases, by = c('hgnc_symbol'='symbol'))
+
+treatment_summary = genome_DESeq_ratios_clusters %>% 
+	group_by(treatment) %>%
+	summarise(mean_log2 = mean(log2FoldChange,na.rm=T),
+						lower_log2 = tidy(t.test(log2FoldChange))$conf.low,
+						upper_log2 = tidy(t.test(log2FoldChange))$conf.high)
+
+cluster_treatment_summary = genome_DESeq_ratios_clusters %>%
+	group_by(cluster_num,treatment) %>% 
+	summarise(mean_log2 = mean(log2FoldChange,na.rm=T),
+						lower_log2 = tidy(t.test(log2FoldChange))$conf.low,
+						upper_log2 = tidy(t.test(log2FoldChange))$conf.high)
+
+dir.create(here('analysis/DESeq_cluster_genome_display/cluster_profiles'), showWarnings = F)
+for (this_cluster in sort(unique(genome_hier_clusters$cluster_num))) {
+	DK_hits = genome_DESeq_ratios_clusters %>% 
+		filter(cluster_num == this_cluster, 
+					 hgnc_symbol %in% dark_kinases$symbol)
+	
+	LK_hits = genome_DESeq_ratios_clusters %>% 
+		filter(cluster_num == this_cluster, 
+					 ! hgnc_symbol %in% dark_kinases$symbol &
+					 	hgnc_symbol %in% all_kinases$symbol)
+	
+	this_plot = ggplot(genome_DESeq_ratios_clusters %>% filter(cluster_num == this_cluster), 
+										 aes(x=treatment,y=log2FoldChange)) + 
+		geom_line(data = LK_hits, mapping = aes(group = hgnc_symbol, color=class),alpha=0.25) +
+		geom_line(data = DK_hits, mapping = aes(group = hgnc_symbol, color=class),alpha=0.25) +
+		geom_boxplot(alpha=0.25) +
+		# geom_jitter(alpha=0.01) +
+		# geom_line(aes(group = hgnc_symbol),alpha=0.02) +
+		geom_point(data = cluster_treatment_summary %>% filter(cluster_num == this_cluster),
+							 aes(x=treatment,y=mean_log2), color='blue') +
+		geom_point(data = treatment_summary, aes(x=treatment,y=mean_log2), color='red') +
+		theme(axis.text.x=element_text(angle = -90, hjust = 0,vjust=0.5)) +
+		xlab('') +
+		ylab('Log 2 Fold Expression Change') +
+		scale_color_discrete(name="Kinase Class") +
+		ggtitle(paste('Drug Response Profile for Cluster: ', this_cluster)) +
+		theme_berginski()
+	
+	ggsave(here('analysis/DESeq_cluster_genome_display/cluster_profiles',sprintf('%03d.png', this_cluster)),
+				 height = 3.5)
+	
+	print(this_plot)
+}
+```
+
+```{r}
+for (number_of_clusters in c(15,20,25,30)) {
+	genome_hier_clusters = as.data.frame(cutree(genome_cluster_ratio,k = number_of_clusters))
+	names(genome_hier_clusters) <- "cluster_num"
+	genome_hier_clusters = genome_hier_clusters %>%
+		rownames_to_column(var = "hgnc_symbol")
+	
+	genome_DESeq_ratios_clusters = DESeq_ratios %>% 
+		right_join(genome_hier_clusters) %>% 
+		left_join(all_kinases, by = c('hgnc_symbol'='symbol'))
+	
+	treatment_summary = genome_DESeq_ratios_clusters %>% 
+		group_by(treatment) %>%
+		summarise(mean_log2 = mean(log2FoldChange,na.rm=T),
+							lower_log2 = tidy(t.test(log2FoldChange))$conf.low,
+							upper_log2 = tidy(t.test(log2FoldChange))$conf.high)
+	
+	cluster_treatment_summary = genome_DESeq_ratios_clusters %>%
+		group_by(cluster_num,treatment) %>% 
+		summarise(mean_log2 = mean(log2FoldChange,na.rm=T),
+							lower_log2 = tidy(t.test(log2FoldChange))$conf.low,
+							upper_log2 = tidy(t.test(log2FoldChange))$conf.high)
+	
+	dir.create(here('analysis/DESeq_cluster_genome_display/cluster_profiles',number_of_clusters), showWarnings = F)
+	for (this_cluster in sort(unique(genome_hier_clusters$cluster_num))) {
+		DK_hits = genome_DESeq_ratios_clusters %>% 
+			filter(cluster_num == this_cluster, 
+						 hgnc_symbol %in% dark_kinases$symbol)
+		
+		LK_hits = genome_DESeq_ratios_clusters %>% 
+			filter(cluster_num == this_cluster, 
+						 ! hgnc_symbol %in% dark_kinases$symbol &
+						 	hgnc_symbol %in% all_kinases$symbol)
+		
+		this_plot = ggplot(genome_DESeq_ratios_clusters %>% filter(cluster_num == this_cluster), 
+											 aes(x=treatment,y=log2FoldChange)) + 
+			geom_line(data = LK_hits, mapping = aes(group = hgnc_symbol, color=class),alpha=0.25) +
+			geom_line(data = DK_hits, mapping = aes(group = hgnc_symbol, color=class),alpha=0.25) +
+			geom_boxplot(alpha=0.25) +
+			# geom_jitter(alpha=0.01) +
+			# geom_line(aes(group = hgnc_symbol),alpha=0.02) +
+			geom_point(data = cluster_treatment_summary %>% filter(cluster_num == this_cluster),
+								 aes(x=treatment,y=mean_log2), color='blue') +
+			geom_point(data = treatment_summary, aes(x=treatment,y=mean_log2), color='red') +
+			theme(axis.text.x=element_text(angle = -90, hjust = 0,vjust=0.5)) +
+			xlab('') +
+			ylab('Log 2 Fold Expression Change') +
+			scale_color_discrete(name="Kinase Class") +
+			ggtitle(paste('Drug Response Profile for Cluster: ', this_cluster)) +
+			theme_berginski()
+		
+		ggsave(here('analysis/DESeq_cluster_genome_display/cluster_profiles',number_of_clusters,sprintf('%03d.png', this_cluster)),
+					 height = 3.5)
+	}
+}
+```
+
+
+
 ## Associated Genes
 
 ```{r all cluster num}
-# genome_hier_all_clusters = cutree(genome_cluster_ratio,k = 2:dim(drug_perturb_ratio_wide_genes)[1]) %>%
-# 	as.data.frame() %>% 
-# 	rownames_to_column(var = "symbol") %>% 
-# 	pivot_longer(-symbol, 
-# 							 names_to = "num_total_clusters", 
-# 							 values_to = "cluster_id") %>% 
-# 	mutate(num_total_clusters = as.factor(num_total_clusters)) %>% 
-# 	left_join(all_kinases %>% select(class,symbol)) %>% 
-# 	arrange(num_total_clusters,symbol)
-# 
-# cluster_sizes = genome_hier_all_clusters %>% 
-# 	group_by(num_total_clusters,cluster_id) %>% 
-# 	count(name = "num_in_cluster") 
-# 
-# genome_hier_all_clusters = genome_hier_all_clusters %>% 
-# 	left_join(cluster_sizes)
+genome_hier_all_clusters = cutree(genome_cluster_ratio,k = 2:dim(drug_perturb_ratio_wide_genes)[1]) %>%
+	as.data.frame() %>%
+	rownames_to_column(var = "symbol") %>%
+	pivot_longer(-symbol,
+							 names_to = "num_total_clusters",
+							 values_to = "cluster_id") %>%
+	mutate(num_total_clusters = as.factor(num_total_clusters)) %>%
+	left_join(all_kinases %>% select(class,symbol)) %>%
+	arrange(num_total_clusters,symbol)
+
+cluster_sizes = genome_hier_all_clusters %>%
+	group_by(num_total_clusters,cluster_id) %>%
+	count(name = "num_in_cluster")
+
+genome_hier_all_clusters = genome_hier_all_clusters %>%
+	left_join(cluster_sizes)
 ```
 
 ```{r}

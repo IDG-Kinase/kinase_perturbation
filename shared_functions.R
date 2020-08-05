@@ -4,8 +4,8 @@ library("DESeq2")
 library("AnnotationDbi")
 library("org.Hs.eg.db")
 
-run_DESeq2 <- function(drug_perturb_files) {
-	dds_results = get_full_DESeq_results(drug_perturb_files)
+run_DESeq2 <- function(drug_perturb_files, ...) {
+	dds_results = get_full_DESeq_results(drug_perturb_files, ...)
 	
 	dds_results_filtered = as.data.frame(dds_results)
 	dds_results_filtered$ensembl_gene_id = rownames(dds_results)
@@ -30,15 +30,28 @@ run_DESeq2 <- function(drug_perturb_files) {
 	))
 }
 
-get_full_DESeq_results <- function(drug_perturb_files) {
+get_full_DESeq_results <- function(drug_perturb_files, comparison_treatment = "DMSO") {
 	drug_perturb_files = drug_perturb_files %>%
-		mutate(names = paste0(treatment,"_",batch,"_",rep))
+		mutate(names = paste0(treatment,"_",batch,"_",rep)) %>%
+		#ensure that DMSO is the first level, forcing the fold change values to be
+		#calculated as drug_treatment/DMSO
+		mutate(treatment = relevel(as.factor(treatment), comparison_treatment),
+					 batch = as.factor(batch),
+					 rep = as.factor(rep)) %>%
+		identity()
 	
 	drug_perturb_files$batch = as.factor(drug_perturb_files$batch)
 	drug_perturb_files$rep = as.factor(drug_perturb_files$rep)
 	
 	drug_perturb_exp = summarizeToGene(tximeta(drug_perturb_files))
 	dds <- DESeqDataSet(drug_perturb_exp, design = ~treatment)
+	
+	#Code to deal with collapsing technical replicates into single columns in
+	#DESeq, will only be used if a "run" column is defined, which should be a
+	#unique name for each run, which collapses together in the names field.
+	if ("run" %in% colnames(drug_perturb_files)) {
+		dds <- collapseReplicates(dds, dds$names, dds$run)
+	}
 	keep <- rowSums(counts(dds)) > 1
 	dds <- dds[keep,]
 	

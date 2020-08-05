@@ -1,11 +1,13 @@
 ---
-title: "Genome Clustering - Pathway Enrichment Analysis - GO Terms"
+title: "Genome Clustering - Pathway Enrichment Analysis - MSigDB Hallmark"
 author: "Matthew Berginski"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:
     toc: true
     toc_float: true
+params:
+  number_of_clusters: 15
 ---
 
 ```{r setup, include=FALSE}
@@ -17,16 +19,19 @@ library(DarkKinaseTools)
 library(glue)
 library(kableExtra)
 
-number_of_clusters = 20
+number_of_clusters = params$number_of_clusters
+genesets <- msigdb_gsets("Homo sapiens", "H")
 ```
 
-This preliminary report details the results of looking for pathway enrichment in each of the groups of genes produced by hierarchical clustering of the drug perturbations. I've cut the the data into `r number_of_clusters`, but this value can be changed if we decide on a different value. Otherwise, this analysis focuses on enriched pathways in the KEGG database. Specifically, this analysis uses the GO Biological Processes segment from: https://www.gsea-msigdb.org/gsea/msigdb.
+This preliminary report details the results of looking for pathway enrichment in each of the groups of genes produced by hierarchical clustering of the drug perturbations. I've cut the the data into `r number_of_clusters`, but this value can be changed if we decide on a different value. Otherwise, this analysis focuses on enriched pathways in the MSigDB database. Specifically, this analysis uses the Hallmark segment from: https://www.gsea-msigdb.org/gsea/msigdb.
 
 As for this report, the panel on the left is sorted by the number of dark kinases in the cluster and displays both the number of pathway hits and dark kinases in the cluster. The number of each cluster is arbitrary. The entry for each cluster displays the kinases associated with the cluster along with the number of non-kinases genes. Below this table are the pathways that passed the enrichment analysis at the 0.01 false discovery rate level. I also corrected for running this analysis for all `r number_of_clusters` clusters.
 
 
-```{r, include=FALSE, cache=T}
+```{r, include=FALSE, cache=F}
 genome_cluster_ratio = read_rds(here('cluster_sets/full_genome_hclust.rds'))
+
+cluster_output_file_name = paste0('full_genome_clusters_', number_of_clusters, '.csv')
 
 tree_cut = cutree(genome_cluster_ratio,k = number_of_clusters) %>% 
 	as.data.frame() %>% 
@@ -34,7 +39,8 @@ tree_cut = cutree(genome_cluster_ratio,k = number_of_clusters) %>%
 	janitor::clean_names() %>%
 	rename(cluster_id = x) %>%
 	left_join(all_kinases %>% select(symbol, class)) %>%
-	mutate(class = ifelse(is.na(class),"Non-kinase",class))
+	mutate(class = ifelse(is.na(class),"Non-kinase",class)) %>%
+	write_csv(here('cluster_sets',cluster_output_file_name))
 
 num_dk_per_cluster = tree_cut %>%
 	group_by(cluster_id) %>%
@@ -42,8 +48,6 @@ num_dk_per_cluster = tree_cut %>%
 						num_lk = sum(class == "Light"),
 						num_nk = sum(class == "Non-kinase")) %>%
 	arrange(desc(num_dk,num_lk,num_nk))
-
-genesets <- msigdb_gsets("Homo sapiens", "C5", "BP")
 
 cluster_vis_text = ''
 
@@ -58,8 +62,8 @@ for (this_cluster in num_dk_per_cluster$cluster_id) {
 												fdr=0.01/number_of_clusters)
 	all_pathway_hits = rbind(all_pathway_hits, enriched_sets$data)
 	
-	# enriched_sets$data = enriched_sets$data %>% 
-	# 	mutate(label = paste0("[",label, "](https://www.gsea-msigdb.org/gsea/msigdb/cards/",label,")")) 
+	enriched_sets$data = enriched_sets$data %>% 
+		mutate(label = paste0("[",label, "](https://www.gsea-msigdb.org/gsea/msigdb/cards/",label,")")) 
 	
 	these_LK = this_gene_set %>% filter(class == "Light")
 	these_DK = this_gene_set %>% filter(class == "Dark")
@@ -82,7 +86,7 @@ for (this_cluster in num_dk_per_cluster$cluster_id) {
 	
 	section_text = paste0('\n\n## Num: ', this_cluster,' (', pathways_text, DKs_text,  ')\n\n')
 
-	cluster_profile_text =  sprintf("<img src = 'cluster_profiles/%03d.png'></img>",this_cluster)
+	cluster_profile_text = sprintf("<img src = 'cluster_profiles/%d/%03d.png'></img>",number_of_clusters,this_cluster)
 	
 	cluster_description = "<p>The blue dots indicate the mean fold change, while the red dots indicate the overall means. The boxplots show the distribution of all the genes in the cluster. The kinases are highlighted with the lines.</p>"
 	
@@ -103,6 +107,28 @@ for (this_cluster in num_dk_per_cluster$cluster_id) {
 														gene_table,
 														pathway_table)
 }
+```
+
+## Overall Enrichment Stats
+
+```{r pathway count stats, include=F}
+pathway_counts = all_pathway_hits %>%
+	mutate(trimmed_label = str_replace(label,"HALLMARK_","")) %>%
+	count(trimmed_label) %>% 
+	arrange(desc(n))
+pathway_counts$label = fct_relevel(pathway_counts$trimmed_label,pathway_counts$trimmed_label)
+
+pathway_over_one = pathway_counts %>% filter(n > 1)
+num_pathway_single_hit = pathway_counts %>% filter(n == 1) %>% pull(trimmed_label) %>% length()
+```
+
+Overall, `r dim(pathway_counts)[1]` pathways are enriched in at least one of the following clusters. Of these pathways `r num_pathway_single_hit` are only hit once. The following pathways are seen in two or more clusters:
+
+```{r, echo=F, dpi = 300}
+ggplot(pathway_over_one, aes(x=label,y=n)) + geom_col() +
+	theme(axis.text.x = element_text(angle = 90,hjust=1,vjust=0.5)) +
+	BerginskiRMisc::theme_berginski() +
+	labs(x = "",y = "# of Apperances") 
 ```
 
 `r cluster_vis_text`

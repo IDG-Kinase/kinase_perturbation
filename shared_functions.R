@@ -1,12 +1,18 @@
-library("tximeta")
-library("DESeq2")
-
-library("AnnotationDbi")
-library("org.Hs.eg.db")
-
-run_DESeq2 <- function(drug_perturb_files, ...) {
-	dds_results = get_full_DESeq_results(drug_perturb_files, ...)
+collect_all_DESeq <- function(exp_info, ...) {
+	results = list()
+	raw_DESeq_results = get_full_DESeq_results(exp_info, ...)
+	results$DESeq_full_results = raw_DESeq_results %>% 
+		as.data.frame() %>% 
+		rownames_to_column(var = "ensembl_gene_id") %>% 
+		left_join(gene_to_hgnc) %>% 
+		select("hgnc_symbol",everything())
 	
+	results$DESeq_summary = run_DESeq2(raw_DESeq_results, ...)
+	
+	return(results)
+}
+
+run_DESeq2 <- function(dds_results, ...) {
 	dds_results_filtered = as.data.frame(dds_results)
 	dds_results_filtered$ensembl_gene_id = rownames(dds_results)
 	dds_results_filtered = dds_results_filtered %>%
@@ -61,3 +67,4 @@ get_full_DESeq_results <- function(drug_perturb_files, comparison_treatment = "D
 	
 	return(dds_results)
 }
+

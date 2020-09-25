@@ -1,0 +1,215 @@
+---
+title: "Drug Pertubations - DESeq2 Analysis"
+author: "Matthew Berginski"
+date: "2/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library("tximeta")
+library("DESeq2")
+
+library("AnnotationDbi")
+library("org.Hs.eg.db")
+library(biomaRt)
+
+library(DarkKinaseTools)
+library(here)
+library(tidyverse)
+library(glue)
+```
+
+```{r}
+if (! file.exists(here('gene_to_hgnc.csv'))) {
+	ensembl = biomaRt::useMart("ensembl",dataset="hsapiens_gene_ensembl")
+	gene_to_hgnc = biomaRt::getBM(attributes = c('ensembl_gene_id','hgnc_symbol'), mart = ensembl)
+	write_csv(gene_to_hgnc, here('gene_to_hgnc.csv'))
+} else {
+	gene_to_hgnc = readr::read_csv(here('gene_to_hgnc.csv'))
+}
+```
+
+```{r}
+full_DESeq = tribble(~baseMean, ~log2FoldChange, ~lfcSE, ~stat, ~pvalue, ~padj, ~treatment, ~batch)
+summary_stats = tribble(~treatment,~batch,~number_2fold,~num_kinases,~num_dark_kinases,~dk_diff_str)
+
+#get the function used to run DESeq2 and return results
+source(here('shared_functions.R'))
+```
+
+#Alisertib
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep,  ~treatment, ~run,
+	
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_01/DMSO_tech_rep1/quant.sf'), 1, 1, "DMSO", "DMSO_rep_01_tech_1",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_01/DMSO_tech_rep2/quant.sf'), 1, 1, "DMSO", "DMSO_rep_01_tech_2",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_02/DMSO_tech_rep1/quant.sf'), 1, 2, "DMSO", "DMSO_rep_02_tech_1",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_02/DMSO_tech_rep2/quant.sf'), 1, 2, "DMSO", "DMSO_rep_02_tech_2",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_01/Alis/quant.sf'), 1, 1, "Alis", "Alis_rep_01_tech_1",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_02/Alis/quant.sf'), 1, 2, "Alis", "Alis_rep_01_tech_2"
+)
+
+temp = collect_all_DESeq(exp_info)
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "Alisertib", batch = 1)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "Alisertib", batch = 1)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+#Alisertib 24 vs 48 hours
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep,  ~treatment,
+	here('salmon_alignments/24hr_vs_48hr/24_hr/rep_01/Alis/quant.sf'), 1, 1, "Alis_24",
+	here('salmon_alignments/24hr_vs_48hr/24_hr/rep_02/Alis/quant.sf'), 1, 2, "Alis_24",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_01/Alis/quant.sf'), 1, 1, "Alis_48",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_02/Alis/quant.sf'), 1, 2, "Alis_48",
+)
+
+temp = collect_all_DESeq(exp_info, comparison_treatment = "Alis_24")
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "Alisertib 24 vs 48", batch = 1)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "Alisertib 24 vs 48", batch = 1)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+#Alisertib 24 vs DMSO 48
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep,  ~treatment, ~run,
+	
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_01/DMSO_tech_rep1/quant.sf'), 1, 1, "DMSO", "DMSO_rep_01_tech_1",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_01/DMSO_tech_rep2/quant.sf'), 1, 1, "DMSO", "DMSO_rep_01_tech_2",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_02/DMSO_tech_rep1/quant.sf'), 1, 2, "DMSO", "DMSO_rep_02_tech_1",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_02/DMSO_tech_rep2/quant.sf'), 1, 2, "DMSO", "DMSO_rep_02_tech_2",
+	here('salmon_alignments/24hr_vs_48hr/24_hr/rep_01/Alis/quant.sf'), 1, 1, "Alis_24", "Alis_24_rep_01",
+	here('salmon_alignments/24hr_vs_48hr/24_hr/rep_02/Alis/quant.sf'), 1, 2, "Alis_24", "Alis_24_rep_02"
+)
+
+temp = collect_all_DESeq(exp_info)
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "Alisertib 24 vs DMSO 48", batch = 1)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "Alisertib 24 vs DMSO 48", batch = 1)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+###############################################################################
+#Palbociclib
+###############################################################################
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep,  ~treatment, ~run,
+	
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_01/DMSO_tech_rep1/quant.sf'), 1, 1, "DMSO", "DMSO_rep_01_tech_1",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_01/DMSO_tech_rep2/quant.sf'), 1, 1, "DMSO", "DMSO_rep_01_tech_2",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_02/DMSO_tech_rep1/quant.sf'), 1, 2, "DMSO", "DMSO_rep_02_tech_1",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_02/DMSO_tech_rep2/quant.sf'), 1, 2, "DMSO", "DMSO_rep_02_tech_2",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_01/Palbo/quant.sf'), 1, 1, "Palbo", "Alis_rep_01_tech_1",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_02/Palbo/quant.sf'), 1, 2, "Palbo", "Alis_rep_01_tech_2"
+)
+
+temp = collect_all_DESeq(exp_info)
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "Palbociclib", batch = 1)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "Palbociclib", batch = 1)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+#Palbociclib 24 vs 48 hours
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep,  ~treatment,
+	here('salmon_alignments/24hr_vs_48hr/24_hr/rep_01/Palbo/quant.sf'), 1, 1, "Palbo_24",
+	here('salmon_alignments/24hr_vs_48hr/24_hr/rep_02/Palbo/quant.sf'), 1, 2, "Palbo_24",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_01/Palbo/quant.sf'), 1, 1, "Palbo_48",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_02/Palbo/quant.sf'), 1, 2, "Palbo_48",
+)
+
+temp = collect_all_DESeq(exp_info, comparison_treatment = "Palbo_24")
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "Palbociclib 24 vs 48", batch = 1)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "Palbociclib 24 vs 48", batch = 1)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+#Palbociclib 24 vs DMSO 48
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep,  ~treatment, ~run,
+	
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_01/DMSO_tech_rep1/quant.sf'), 1, 1, "DMSO", "DMSO_rep_01_tech_1",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_01/DMSO_tech_rep2/quant.sf'), 1, 1, "DMSO", "DMSO_rep_01_tech_2",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_02/DMSO_tech_rep1/quant.sf'), 1, 2, "DMSO", "DMSO_rep_02_tech_1",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_02/DMSO_tech_rep2/quant.sf'), 1, 2, "DMSO", "DMSO_rep_02_tech_2",
+	here('salmon_alignments/24hr_vs_48hr/24_hr/rep_01/Palbo/quant.sf'), 1, 1, "Palbo_24", "Palbo_24_rep_01",
+	here('salmon_alignments/24hr_vs_48hr/24_hr/rep_02/Palbo/quant.sf'), 1, 2, "Palbo_24", "Palbo_24_rep_02"
+)
+
+temp = collect_all_DESeq(exp_info)
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "Palbociclib 24 vs DMSO 48", batch = 1)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "Palbociclib 24 vs DMSO 48", batch = 1)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+# DMSO Comparison
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep,  ~treatment,
+	
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_01/DMSO_tech_rep1/quant.sf'), 1, 1, "DMSO rep 01",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_01/DMSO_tech_rep2/quant.sf'), 1, 1, "DMSO rep 01",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_02/DMSO_tech_rep1/quant.sf'), 1, 2, "DMSO rep 02",
+	here('salmon_alignments/24hr_vs_48hr/48_hr/rep_02/DMSO_tech_rep2/quant.sf'), 1, 2, "DMSO rep 02"
+)
+
+temp = collect_all_DESeq(exp_info, comparison_treatment = "DMSO rep 01")
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "DMSO vs DMSO", batch = 1)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "DMSO vs DMSO", batch = 1)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+# Summary Output
+
+```{r}
+summary_stats_output = summary_stats %>% 
+	select(treatment,batch,everything()) %>% 
+	rename("Genes" = number_2fold,
+				 "Kinases" = num_kinases,
+				 "Dark Kinases" = num_dark_kinases,
+				 "IDG Kinases" = dk_diff_str)
+
+write_csv(summary_stats_output,here('DESeq_results','24_vs_48_DESeq2_summary.csv'))
+
+write_csv(full_DESeq, here('DESeq_results','24_vs_48_full_DESeq2.csv.gz'))
+```

@@ -1,5 +1,5 @@
 ---
-title: "Drug Pertubations - DESeq2 Analysis"
+title: "Drug Pertubations - DESeq2 Analysis - HCC1806"
 author: "Matthew Berginski"
 date: "2/17/2020"
 output: html_document
@@ -11,6 +11,10 @@ library("DESeq2")
 
 library("AnnotationDbi")
 library("org.Hs.eg.db")
+library("BiocParallel")
+
+register(MulticoreParam(8))
+
 library(biomaRt)
 
 library(DarkKinaseTools)
@@ -159,28 +163,7 @@ summary_stats = rbind(summary_stats, temp$DESeq_summary)
 # Batch 02
 ###############################################################################
 
-#DMSO vs DMSO
 
-```{r}
-exp_info = tribble(
-	~files, ~batch, ~rep, ~treatment,
-	
-		
-	here('salmon_alignments/HCC1806/batch_01/rep_01/DMSO/quant.sf'), 1, 1, "DMSO",
-	here('salmon_alignments/HCC1806/batch_01/rep_02/DMSO/quant.sf'), 1, 2, "DMSO",
-	here('salmon_alignments/HCC1806/batch_02/rep_01/DMSO/quant.sf'), 2, 1, "DMSO 2",
-	here('salmon_alignments/HCC1806/batch_02/rep_02/DMSO/quant.sf'), 2, 2, "DMSO 2",
-)
-
-temp = collect_all_DESeq(exp_info)
-temp$DESeq_full_results = temp$DESeq_full_results %>%
-	mutate(treatment = "DMSO 1 vs DMSO 2", batch = 1)
-full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
-
-temp$DESeq_summary = temp$DESeq_summary %>% 
-	mutate(treatment = "DMSO 1 vs DMSO 2", batch = 1)
-summary_stats = rbind(summary_stats, temp$DESeq_summary)
-```
 
 #CoCl2
 
@@ -291,8 +274,188 @@ temp$DESeq_summary = temp$DESeq_summary %>%
 	mutate(treatment = "Trametinib 500", batch = 2)
 summary_stats = rbind(summary_stats, temp$DESeq_summary)
 ```
+###############################################################################
+# Batch 03
+###############################################################################
 
-#Trametinib - Zawistowski
+#Alisertib
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep, ~treatment,
+	
+	here('salmon_alignments/HCC1806/batch_03/rep_01/DMSO/quant.sf'), 3, 1, "DMSO",
+	here('salmon_alignments/HCC1806/batch_03/rep_01/Alisertib/quant.sf'), 3, 1, "Alisertib",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/DMSO/quant.sf'), 3, 2, "DMSO",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/Alisertib/quant.sf'), 3, 2, "Alisertib"
+)
+
+temp = collect_all_DESeq(exp_info)
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "Alisertib", batch = 3)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "Alisertib", batch = 3)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+#Dinaciclib
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep, ~treatment,
+	
+	here('salmon_alignments/HCC1806/batch_03/rep_01/DMSO/quant.sf'), 3, 1, "DMSO",
+	here('salmon_alignments/HCC1806/batch_03/rep_01/Dinaciclib/quant.sf'), 3, 1, "Dinaciclib",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/DMSO/quant.sf'), 3, 2, "DMSO",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/Dinaciclib/quant.sf'), 3, 2, "Dinaciclib"
+)
+
+temp = collect_all_DESeq(exp_info)
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "Dinaciclib", batch = 3)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "Dinaciclib", batch = 3)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+#JIB-04
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep, ~treatment,
+	
+	here('salmon_alignments/HCC1806/batch_03/rep_01/DMSO/quant.sf'), 3, 1, "DMSO",
+	here('salmon_alignments/HCC1806/batch_03/rep_01/JIB04/quant.sf'), 3, 1, "JIB-04",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/DMSO/quant.sf'), 3, 2, "DMSO",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/JIB04/quant.sf'), 3, 2, "JIB-04"
+)
+
+temp = collect_all_DESeq(exp_info)
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "JIB-04", batch = 3)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "JIB-04", batch = 3)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+#Paclitaxel
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep, ~treatment,
+	
+	here('salmon_alignments/HCC1806/batch_03/rep_01/DMSO/quant.sf'), 3, 1, "DMSO",
+	here('salmon_alignments/HCC1806/batch_03/rep_01/Paclitaxel/quant.sf'), 3, 1, "Paclitaxel",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/DMSO/quant.sf'), 3, 2, "DMSO",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/Paclitaxel/quant.sf'), 3, 2, "Paclitaxel"
+)
+
+temp = collect_all_DESeq(exp_info)
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "Paclitaxel", batch = 3)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "Paclitaxel", batch = 3)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+#Ruxolitinib
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep, ~treatment,
+	
+	here('salmon_alignments/HCC1806/batch_03/rep_01/DMSO/quant.sf'), 3, 1, "DMSO",
+	here('salmon_alignments/HCC1806/batch_03/rep_01/Ruxolitinib/quant.sf'), 3, 1, "Ruxolitinib",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/DMSO/quant.sf'), 3, 2, "DMSO",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/Ruxolitinib/quant.sf'), 3, 2, "Ruxolitinib"
+)
+
+temp = collect_all_DESeq(exp_info)
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "Ruxolitinib", batch = 3)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "Ruxolitinib", batch = 3)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+###############################################################################
+# DMSO vs DMSO
+###############################################################################
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep, ~treatment,
+	
+	here('salmon_alignments/HCC1806/batch_01/rep_01/DMSO/quant.sf'), 1, 1, "DMSO",
+	here('salmon_alignments/HCC1806/batch_01/rep_02/DMSO/quant.sf'), 1, 2, "DMSO",
+	here('salmon_alignments/HCC1806/batch_02/rep_01/DMSO/quant.sf'), 2, 1, "DMSO 2",
+	here('salmon_alignments/HCC1806/batch_02/rep_02/DMSO/quant.sf'), 2, 2, "DMSO 2",
+)
+
+temp = collect_all_DESeq(exp_info)
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "DMSO 1 vs DMSO 2", batch = 1)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "DMSO 1 vs DMSO 2", batch = 1)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep, ~treatment,
+	
+	here('salmon_alignments/HCC1806/batch_02/rep_01/DMSO/quant.sf'), 2, 1, "DMSO 2",
+	here('salmon_alignments/HCC1806/batch_02/rep_02/DMSO/quant.sf'), 2, 2, "DMSO 2",
+	here('salmon_alignments/HCC1806/batch_03/rep_01/DMSO/quant.sf'), 3, 1, "DMSO 3",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/DMSO/quant.sf'), 3, 2, "DMSO 3"
+)
+
+temp = collect_all_DESeq(exp_info, comparison_treatment = "DMSO 2")
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "DMSO 2 vs DMSO 3", batch = 1)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "DMSO 2 vs DMSO 3", batch = 1)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep, ~treatment,
+	
+		
+	here('salmon_alignments/HCC1806/batch_01/rep_01/DMSO/quant.sf'), 1, 1, "DMSO",
+	here('salmon_alignments/HCC1806/batch_01/rep_02/DMSO/quant.sf'), 1, 2, "DMSO",
+	here('salmon_alignments/HCC1806/batch_03/rep_01/DMSO/quant.sf'), 3, 1, "DMSO 3",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/DMSO/quant.sf'), 3, 2, "DMSO 3"
+)
+
+temp = collect_all_DESeq(exp_info)
+temp$DESeq_full_results = temp$DESeq_full_results %>%
+	mutate(treatment = "DMSO 1 vs DMSO 3", batch = 1)
+full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
+
+temp$DESeq_summary = temp$DESeq_summary %>% 
+	mutate(treatment = "DMSO 1 vs DMSO 3", batch = 1)
+summary_stats = rbind(summary_stats, temp$DESeq_summary)
+```
+
+###############################################################################
+# Trametinib - Zawistowski
+###############################################################################
 
 ```{r}
 exp_info = tribble(
@@ -326,11 +489,11 @@ exp_info = tribble(
 
 temp = collect_all_DESeq(exp_info)
 temp$DESeq_full_results = temp$DESeq_full_results %>%
-	mutate(treatment = "DMSO Tramet Comp", batch = 1)
+	mutate(treatment = "DMSO Zawistowski Comp", batch = 1)
 full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
 
 temp$DESeq_summary = temp$DESeq_summary %>% 
-	mutate(treatment = "DMSO Tramet Comp", batch = 1)
+	mutate(treatment = "DMSO Zawistowski Comp", batch = 1)
 summary_stats = rbind(summary_stats, temp$DESeq_summary)
 ```
 

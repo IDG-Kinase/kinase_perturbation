@@ -216,9 +216,9 @@ exp_info = tribble(
 	~files, ~batch, ~rep, ~treatment,
 	
 	here('salmon_alignments/HCC1806/batch_02/rep_01/DMSO/quant.sf'), 2, 1, "DMSO",
-	here('salmon_alignments/HCC1806/batch_02/rep_01/SGC/quant.sf'), 2, 1, "Palbo",
+	here('salmon_alignments/HCC1806/batch_02/rep_01/SGC/quant.sf'), 2, 1, "SGCCP30",
 	here('salmon_alignments/HCC1806/batch_02/rep_02/DMSO/quant.sf'), 2, 2, "DMSO",
-	here('salmon_alignments/HCC1806/batch_02/rep_01/SGC/quant.sf'), 2, 2, "Palbo"
+	here('salmon_alignments/HCC1806/batch_02/rep_01/SGC/quant.sf'), 2, 2, "SGCCP30"
 )
 
 temp = collect_all_DESeq(exp_info)

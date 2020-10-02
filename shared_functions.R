@@ -7,12 +7,12 @@ collect_all_DESeq <- function(exp_info, ...) {
 		left_join(gene_to_hgnc) %>% 
 		select("hgnc_symbol",everything())
 	
-	results$DESeq_summary = run_DESeq2(raw_DESeq_results, ...)
+	results$DESeq_summary = filter_DESeq(raw_DESeq_results, ...)
 	
 	return(results)
 }
 
-run_DESeq2 <- function(dds_results, ...) {
+filter_DESeq <- function(dds_results, ...) {
 	dds_results_filtered = as.data.frame(dds_results)
 	dds_results_filtered$ensembl_gene_id = rownames(dds_results)
 	dds_results_filtered = dds_results_filtered %>%
@@ -67,4 +67,3 @@ get_full_DESeq_results <- function(drug_perturb_files, comparison_treatment = "D
 	
 	return(dds_results)
 }
-

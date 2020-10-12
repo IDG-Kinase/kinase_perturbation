@@ -1,0 +1,377 @@
+---
+title: "Drug Pertubations - DESeq2 Analysis - SUM159"
+author: "Matthew Berginski"
+date: "2/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library("tximeta")
+library("DESeq2")
+
+library("AnnotationDbi")
+library("org.Hs.eg.db")
+library("BiocParallel")
+
+register(MulticoreParam(8))
+
+library(biomaRt)
+
+library(DarkKinaseTools)
+library(here)
+library(tidyverse)
+library(glue)
+library(patchwork)
+
+library(BerginskiRMisc)
+library(ggupset)
+library(tictoc)
+library(gt)
+```
+
+```{r}
+if (! file.exists(here('gene_to_hgnc.csv'))) {
+	ensembl = biomaRt::useMart("ensembl",dataset="hsapiens_gene_ensembl")
+	gene_to_hgnc = biomaRt::getBM(attributes = c('ensembl_gene_id','hgnc_symbol'), mart = ensembl)
+	write_csv(gene_to_hgnc, here('gene_to_hgnc.csv'))
+} else {
+	gene_to_hgnc = readr::read_csv(here('gene_to_hgnc.csv'))
+}
+
+source(here('shared_functions.R'))
+```
+
+
+```{r}
+exp_info = tribble(
+	~files, ~batch, ~rep, ~treatment, ~cell_line,
+	
+	here('salmon_alignments/batch_01/rep_01/DMSO/quant.sf'), 1, 1, "DMSO","SUM159",
+	here('salmon_alignments/batch_01/rep_02/DMSO/quant.sf'), 1, 2, "DMSO","SUM159",
+	here('salmon_alignments/batch_01/rep_01/Dinac/quant.sf'), 1, 1, "Dinaciclib","SUM159",
+	here('salmon_alignments/batch_01/rep_02/Dinac/quant.sf'), 1, 2, "Dinaciclib","SUM159",
+	here('salmon_alignments/batch_01/rep_01/Ent/quant.sf'), 1, 1, "Ent","SUM159",
+	here('salmon_alignments/batch_01/rep_02/Ent/quant.sf'), 1, 2, "Ent","SUM159",
+	# here('salmon_alignments/batch_01/rep_01/JIB04/quant.sf'), 1, 1, "JIB.04.low.dose","SUM159",
+	# here('salmon_alignments/batch_01/rep_02/JIB04/quant.sf'), 1, 2, "JIB.04.low.dose","SUM159",
+	here('salmon_alignments/batch_01/rep_01/MK2206/quant.sf'), 1, 1, "MK2206","SUM159",
+	here('salmon_alignments/batch_01/rep_02/MK2206/quant.sf'), 1, 2, "MK2206","SUM159",
+	here('salmon_alignments/batch_01/rep_01/Tram/quant.sf'), 1, 1, "Trametinib","SUM159",
+	here('salmon_alignments/batch_01/rep_02/Tram/quant.sf'), 1, 2, "Trametinib","SUM159",
+	
+	here('salmon_alignments/batch_02/rep_01/DMSO/quant.sf'), 2, 1, "DMSO","SUM159",
+	here('salmon_alignments/batch_02/rep_02/DMSO/quant.sf'), 2, 2, "DMSO","SUM159",
+	here('salmon_alignments/batch_02/rep_01/JIB04/quant.sf'), 2, 1, "JIB.04","SUM159",
+	here('salmon_alignments/batch_02/rep_02/JIB04/quant.sf'), 2, 2, "JIB.04","SUM159",
+	here('salmon_alignments/batch_02/rep_01/Navi/quant.sf'), 2, 1, "Navitoclax","SUM159",
+	here('salmon_alignments/batch_02/rep_02/Navi/quant.sf'), 2, 2, "Navitoclax","SUM159",
+	here('salmon_alignments/batch_02/rep_01/Paclit/quant.sf'), 2, 1, "Paclitaxel","SUM159",
+	here('salmon_alignments/batch_02/rep_02/Paclit/quant.sf'), 2, 2, "Paclitaxel","SUM159",
+	here('salmon_alignments/batch_02/rep_01/Rux/quant.sf'), 2, 1, "Ruxolitinib","SUM159",
+	here('salmon_alignments/batch_02/rep_02/Rux/quant.sf'), 2, 2, "Ruxolitinib","SUM159",
+	here('salmon_alignments/batch_02/rep_01/SGC/quant.sf'), 2, 1, "SGCCP30","SUM159",
+	here('salmon_alignments/batch_02/rep_02/SGC/quant.sf'), 2, 2, "SGCCP30","SUM159",
+	
+	here('salmon_alignments/batch_03/rep_01/DMSO/quant.sf'), 3, 1, "DMSO","SUM159",
+	here('salmon_alignments/batch_03/rep_02/DMSO/quant.sf'), 3, 2, "DMSO","SUM159",
+	here('salmon_alignments/batch_03/rep_01/Alis/quant.sf'), 3, 1, "Alisertib","SUM159",
+	here('salmon_alignments/batch_03/rep_02/Alis/quant.sf'), 3, 2, "Alisertib","SUM159",
+	here('salmon_alignments/batch_03/rep_01/Bort/quant.sf'), 3, 1, "Bortezomib","SUM159",
+	here('salmon_alignments/batch_03/rep_02/Bort/quant.sf'), 3, 2, "Bortezomib","SUM159",
+	here('salmon_alignments/batch_03/rep_01/CoCl2/quant.sf'), 3, 1, "CoCl2","SUM159",
+	here('salmon_alignments/batch_03/rep_02/CoCl2/quant.sf'), 3, 2, "CoCl2","SUM159",
+	# here('salmon_alignments/batch_03/rep_01/FCCP/quant.sf'), 3, 1, "FCCP","SUM159",
+	# here('salmon_alignments/batch_03/rep_02/FCCP/quant.sf'), 3, 2, "FCCP","SUM159",
+	here('salmon_alignments/batch_03/rep_01/Palbo/quant.sf'), 3, 1, "Palbociclib","SUM159",
+	here('salmon_alignments/batch_03/rep_02/Palbo/quant.sf'), 3, 2, "Palbociclib","SUM159",
+	
+	here('salmon_alignments/HCC1806/batch_01/rep_01/DMSO/quant.sf'), 1, 1, "DMSO","HCC1806",
+	here('salmon_alignments/HCC1806/batch_01/rep_02/DMSO/quant.sf'), 1, 2, "DMSO","HCC1806",
+	here('salmon_alignments/HCC1806/batch_01/rep_01/Bort/quant.sf'), 1, 1, "Bortezomib","HCC1806",
+	here('salmon_alignments/HCC1806/batch_01/rep_02/Bort/quant.sf'), 1, 2, "Bortezomib","HCC1806",
+	here('salmon_alignments/HCC1806/batch_01/rep_01/Ent/quant.sf'), 1, 1, "Ent","HCC1806",
+	here('salmon_alignments/HCC1806/batch_01/rep_02/Ent/quant.sf'), 1, 2, "Ent","HCC1806",
+	here('salmon_alignments/HCC1806/batch_01/rep_01/MK2206/quant.sf'), 1, 1, "MK2206","HCC1806",
+	here('salmon_alignments/HCC1806/batch_01/rep_02/MK2206/quant.sf'), 1, 2, "MK2206","HCC1806",
+	here('salmon_alignments/HCC1806/batch_01/rep_01/Navit/quant.sf'), 1, 1, "Navitoclax","HCC1806",
+	here('salmon_alignments/HCC1806/batch_01/rep_02/Navit/quant.sf'), 1, 2, "Navitoclax","HCC1806",
+	here('salmon_alignments/HCC1806/batch_01/rep_01/Tram/quant.sf'), 1, 1, "Trametinib","HCC1806",
+	here('salmon_alignments/HCC1806/batch_01/rep_02/Tram/quant.sf'), 1, 2, "Trametinib","HCC1806",
+	
+	here('salmon_alignments/HCC1806/batch_02/rep_01/DMSO/quant.sf'), 2, 1, "DMSO","HCC1806",
+	here('salmon_alignments/HCC1806/batch_02/rep_02/DMSO/quant.sf'), 2, 2, "DMSO","HCC1806",
+	here('salmon_alignments/HCC1806/batch_02/rep_01/CoCl2/quant.sf'), 2, 1, "CoCl2","HCC1806",
+	here('salmon_alignments/HCC1806/batch_02/rep_02/CoCl2/quant.sf'), 2, 2, "CoCl2","HCC1806",
+	here('salmon_alignments/HCC1806/batch_02/rep_01/Palbo/quant.sf'), 2, 1, "Palbociclib","HCC1806",
+	here('salmon_alignments/HCC1806/batch_02/rep_02/Palbo/quant.sf'), 2, 2, "Palbociclib","HCC1806",
+	here('salmon_alignments/HCC1806/batch_02/rep_01/SGC/quant.sf'), 2, 1, "SGCCP30","HCC1806",
+	here('salmon_alignments/HCC1806/batch_02/rep_01/SGC/quant.sf'), 2, 2, "SGCCP30","HCC1806",
+	# here('salmon_alignments/HCC1806/batch_02/rep_01/Tram_100/quant.sf'), 2, 1, "Tram_100","HCC1806",
+	# here('salmon_alignments/HCC1806/batch_02/rep_02/Tram_100/quant.sf'), 2, 2, "Tram_100","HCC1806",
+	# here('salmon_alignments/HCC1806/batch_02/rep_01/Tram_500/quant.sf'), 2, 1, "Tram_500","HCC1806",
+	# here('salmon_alignments/HCC1806/batch_02/rep_02/Tram_500/quant.sf'), 2, 2, "Tram_500","HCC1806",
+	
+	here('salmon_alignments/HCC1806/batch_03/rep_01/DMSO/quant.sf'), 3, 1, "DMSO","HCC1806",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/DMSO/quant.sf'), 3, 2, "DMSO","HCC1806",
+	here('salmon_alignments/HCC1806/batch_03/rep_01/Alisertib/quant.sf'), 3, 1, "Alisertib","HCC1806",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/Alisertib/quant.sf'), 3, 2, "Alisertib","HCC1806",
+	here('salmon_alignments/HCC1806/batch_03/rep_01/Dinaciclib/quant.sf'), 3, 1, "Dinaciclib","HCC1806",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/Dinaciclib/quant.sf'), 3, 2, "Dinaciclib","HCC1806",
+	here('salmon_alignments/HCC1806/batch_03/rep_01/JIB04/quant.sf'), 3, 1, "JIB.04","HCC1806",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/JIB04/quant.sf'), 3, 2, "JIB.04","HCC1806",
+	here('salmon_alignments/HCC1806/batch_03/rep_01/Paclitaxel/quant.sf'), 3, 1, "Paclitaxel","HCC1806",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/Paclitaxel/quant.sf'), 3, 2, "Paclitaxel","HCC1806",
+	here('salmon_alignments/HCC1806/batch_03/rep_01/Ruxolitinib/quant.sf'), 3, 1, "Ruxolitinib","HCC1806",
+	here('salmon_alignments/HCC1806/batch_03/rep_02/Ruxolitinib/quant.sf'), 3, 2, "Ruxolitinib","HCC1806",
+)
+```
+
+
+```{r}
+tic()
+drug_perturb_files = exp_info %>%
+	mutate(names = paste0(cell_line,"_",treatment,"_",batch,"_",rep)) %>%
+	#ensure that DMSO is the first level, forcing the fold change values to be
+	#calculated as drug_treatment/DMSO
+	mutate(treatment = relevel(as.factor(treatment), "DMSO"),
+				 cell_line = relevel(as.factor(cell_line), "SUM159"),
+				 batch = as.factor(batch),
+				 rep = as.factor(rep)) %>%
+	mutate(group = paste0(cell_line,"_",treatment,"_",batch)) %>%
+	identity()
+
+drug_perturb_files$batch = as.factor(drug_perturb_files$batch)
+drug_perturb_files$rep = as.factor(drug_perturb_files$rep)
+
+drug_perturb_exp = summarizeToGene(tximeta(drug_perturb_files))
+# dds <- DESeqDataSet(drug_perturb_exp, design = ~ group + batch)
+dds <- DESeqDataSet(drug_perturb_exp, design = ~batch + batch:cell_line + cell_line:treatment)
+
+#Code to deal with collapsing technical replicates into single columns in
+#DESeq, will only be used if a "run" column is defined, which should be a
+#unique name for each run, which collapses together in the names field.
+if ("run" %in% colnames(drug_perturb_files)) {
+	dds <- collapseReplicates(dds, dds$names, dds$run)
+}
+keep <- rowSums(counts(dds)) > 1
+dds <- dds[keep,]
+
+dds_analysis <- DESeq(dds)
+toc();
+```
+
+```{r}
+tic();
+full_DESeq = tribble(~hgnc_symbol,~ensembl_gene_id, ~baseMean, ~log2FoldChange, ~lfcSE, ~stat, ~pvalue, ~padj, ~treatment)
+summary_stats = tribble(~treatment,~number_2fold,~num_kinases,~num_dark_kinases,~dk_diff_str)
+
+for (this_comparison in resultsNames(dds_analysis)[-1]) {
+	dds_results = lfcShrink(dds_analysis, coef=this_comparison, type="apeglm")
+	
+	full_DESeq = rbind(
+		full_DESeq,
+		dds_results %>%
+			as.data.frame() %>%
+			rownames_to_column(var = "ensembl_gene_id") %>%
+			mutate(treatment = this_comparison) %>%
+			left_join(gene_to_hgnc) %>%
+			dplyr::select("hgnc_symbol","treatment",everything())
+	)
+	
+	dds_results_filtered = dds_results %>%
+		as.data.frame() %>%
+		rownames_to_column(var = "ensembl_gene_id") %>%
+		filter(abs(log2FoldChange) >= 1, padj <= 0.05) %>%
+		left_join(gene_to_hgnc) %>%
+		filter(!is.na(hgnc_symbol)) %>%
+		mutate("treatment" = this_comparison)
+	
+	dds_results_filtered_kinase = dds_results_filtered %>%
+		filter(hgnc_symbol %in% all_kinases$symbol)
+	
+	dds_results_filtered_dark_kinase = dds_results_filtered %>%
+		filter(hgnc_symbol %in% dark_kinases$symbol)
+	
+	summary_stats = rbind(
+		summary_stats,
+		data.frame(
+			treatment = this_comparison,
+			number_2fold = dim(dds_results_filtered)[1],
+			num_kinases = dim(dds_results_filtered_kinase)[1],
+			num_dark_kinases = dim(dds_results_filtered_dark_kinase)[1],
+			dk_diff_str = ifelse(dim(dds_results_filtered_dark_kinase)[1] == 0,
+													 "",
+													 glue_collapse(sort(dds_results_filtered_dark_kinase$hgnc_symbol), sep=" | "))
+		)
+	)
+}
+
+write_csv(full_DESeq,here('DESeq_results/All_full_DESeq2_single_DESeq.csv.gz'))
+write_csv(summary_stats,here('DESeq_results/All_DESeq2_summary_single_DESeq.csv'))
+toc()
+```
+
+```{r}
+
+
+cleaned_summary_stats = summary_stats %>% 
+	separate(treatment,into = c('cell_line','treatment'), sep="\\.") %>% 
+	filter(str_detect(cell_line, "^cell_line")) %>%
+	mutate(cell_line = str_replace(cell_line,"cell_line",""),
+				 treatment = str_replace(treatment,"treatment",""))
+
+average_genes = cleaned_summary_stats %>%
+	group_by(treatment) %>%
+	summarise(average_count = mean(number_2fold)) %>%
+	arrange(desc(average_count))
+
+cleaned_summary_stats = cleaned_summary_stats %>%
+	arrange(average_genes$treatment)
+
+cleaned_summary_stats %>%
+	select(-dk_diff_str) %>%
+	gt() %>%
+	tab_header(
+    title = md("Number of Diff Expressed Genes Across Treatments")
+  ) %>%
+	gtsave(here('figures/cell_line-treatment_summary.png'))
+```
+
+###############################################################################
+# Comparison with single runs
+###############################################################################
+
+```{r, eval=F}
+single_run_HCC1806 = read_csv(here('DESeq_results/HCC1806_full_DESeq2.csv.gz'))
+
+full_DESeq_temp = full_DESeq %>%
+	select(treatment, ensembl_gene_id, log2FoldChange) %>%
+	separate(treatment, into = c('cell_line','treatment'), sep="\\.") %>%
+	filter(cell_line == "cell_lineHCC1806") %>%
+	mutate(treatment = str_replace_all(treatment,"treatment","")) %>%
+	mutate(treatment = case_when(
+		treatment == "Ent" ~ "Entinostat",
+		treatment == "JIB" ~ "JIB-04",
+		TRUE ~ treatment
+	)) %>%
+	select(-cell_line) %>%
+	rename(log2_full_set = log2FoldChange)
+
+HCC_joined = inner_join(single_run_HCC1806, full_DESeq_temp)
+
+correlation_summary = HCC_joined %>% 
+	group_by(treatment) %>% 
+	summarise(tidy(cor.test(log2FoldChange,log2_full_set))) 
+
+ggplot(HCC_joined, aes(x=log2FoldChange,y=log2_full_set)) + geom_density_2d() + facet_wrap(~treatment)
+```
+
+```{r, eval=F}
+single_run_SUM159 = read_csv(here('DESeq_results/SUM159_full_DESeq2.csv.gz'))
+
+full_DESeq_temp = full_DESeq %>%
+	select(treatment, ensembl_gene_id, log2FoldChange) %>%
+	separate(treatment, into = c('cell_line','treatment'), sep="\\.") %>%
+	filter(cell_line == "cell_lineSUM159") %>%
+	mutate(treatment = str_replace_all(treatment,"treatment","")) %>%
+	mutate(treatment = case_when(
+		treatment == "Ent" ~ "Entinostat",
+		treatment == "JIB" ~ "JIB-04 High Dose",
+		TRUE ~ treatment
+	)) %>%
+	select(-cell_line) %>%
+	rename(log2_full_set = log2FoldChange)
+
+SUM159_joined = inner_join(single_run_SUM159, full_DESeq_temp)
+
+correlation_summary = SUM159_joined %>% 
+	group_by(treatment) %>% 
+	summarise(tidy(cor.test(log2FoldChange,log2_full_set))) 
+
+# ggplot(SUM159_joined, aes(x=log2FoldChange,y=log2_full_set)) + geom_density_2d() + facet_wrap(~treatment)
+```
+
+###############################################################################
+# Treatments Comparisons Across Cell Lines
+###############################################################################
+
+```{r}
+tic();
+treatment_set = full_DESeq %>%
+	select(treatment) %>%
+	separate(treatment, into = c('cell_line','treatment'), sep="\\.") %>%
+	filter(cell_line == "cell_lineSUM159" | cell_line == "cell_lineHCC1806") %>%
+	mutate(treatment = str_replace_all(treatment,"treatment","")) %>%
+	#deal with JIB.04 having a dot in the treatment name
+	mutate(treatment = ifelse(treatment == "JIB", "JIB.04", treatment)) %>%
+	pull(treatment) %>% 
+	unique()
+
+full_DESeq_cell_line_comp = tribble(~hgnc_symbol,~ensembl_gene_id, 
+																					~baseMean, ~log2FoldChange, ~lfcSE, ~stat, ~pvalue, ~padj, ~treatment)
+summary_stats_treatments = tribble(~treatment,~number_2fold,~num_kinases,~num_dark_kinases,~dk_diff_str)
+
+for (this_treatment in treatment_set) {
+	SUM159_contrast = paste0("cell_lineSUM159.treatment",this_treatment)
+	HCC1806_contrast = paste0("cell_lineHCC1806.treatment",this_treatment)
+	ifelse(!any(full_DESeq$treatment == SUM159_contrast),
+				 print("Missing ",SUM159_contrast),
+				 TRUE)
+	ifelse(!any(full_DESeq$treatment == HCC1806_contrast),
+				 print("Missing ",HCC1806_contrast),
+				 TRUE)
+
+	dds_results = results(dds_analysis, contrast = list(HCC1806_contrast,SUM159_contrast))
+
+	full_DESeq_cell_line_comp = rbind(
+		full_DESeq_cell_line_comp,
+		dds_results %>%
+			as.data.frame() %>%
+			rownames_to_column(var = "ensembl_gene_id") %>%
+			mutate(treatment = this_treatment) %>%
+			left_join(gene_to_hgnc) %>%
+			dplyr::select("hgnc_symbol","treatment",everything())
+	)
+
+	dds_results_filtered = dds_results %>%
+		as.data.frame() %>%
+		rownames_to_column(var = "ensembl_gene_id") %>%
+		filter(abs(log2FoldChange) >= 1, padj <= 0.05) %>%
+		left_join(gene_to_hgnc) %>%
+		filter(!is.na(hgnc_symbol)) %>%
+		mutate("treatment" = this_treatment)
+
+	dds_results_filtered_kinase = dds_results_filtered %>%
+		filter(hgnc_symbol %in% all_kinases$symbol)
+
+	dds_results_filtered_dark_kinase = dds_results_filtered %>%
+		filter(hgnc_symbol %in% dark_kinases$symbol)
+
+	summary_stats_treatments = rbind(
+		summary_stats_treatments,
+		data.frame(
+			treatment = this_treatment,
+			number_2fold = dim(dds_results_filtered)[1],
+			num_kinases = dim(dds_results_filtered_kinase)[1],
+			num_dark_kinases = dim(dds_results_filtered_dark_kinase)[1],
+			dk_diff_str = ifelse(dim(dds_results_filtered_dark_kinase)[1] == 0,
+													 "",
+													 glue_collapse(sort(dds_results_filtered_dark_kinase$hgnc_symbol), sep=" | "))
+		)
+	)
+}
+
+write_csv(full_DESeq_cell_line_comp,here('DESeq_results/All_full_DESeq2_cross_line_comps.csv.gz'))
+write_csv(summary_stats_treatments,here('DESeq_results/All_DESeq2_summary_cross_line_comps.csv'))
+toc()
+```
+
+```{r}
+summary_stats_treatments %>% 
+	arrange(desc(number_2fold)) %>% 
+	gt() %>% 
+	tab_header(
+    title = md("Number of Diff Expressed Genes Across SUM159 vs HCC1806")
+  ) %>%
+	gtsave(here('figures/cross_cell_line_summary.png')) 
+```

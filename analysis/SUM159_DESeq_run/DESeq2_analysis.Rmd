@@ -227,7 +227,7 @@ temp$DESeq_summary = temp$DESeq_summary %>%
 summary_stats = rbind(summary_stats, temp$DESeq_summary)
 ```
 
-## Ruxolibinib
+## Ruxolitinib
 
 ```{r}
 exp_info = tribble(
@@ -241,11 +241,11 @@ exp_info = tribble(
 
 temp = collect_all_DESeq(exp_info)
 temp$DESeq_full_results = temp$DESeq_full_results %>%
-	mutate(treatment = "Ruxolibinib", batch = 2)
+	mutate(treatment = "Ruxolitinib", batch = 2)
 full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
 
 temp$DESeq_summary = temp$DESeq_summary %>% 
-	mutate(treatment = "Ruxolibinib", batch = 2)
+	mutate(treatment = "Ruxolitinib", batch = 2)
 summary_stats = rbind(summary_stats, temp$DESeq_summary)
 ```
 

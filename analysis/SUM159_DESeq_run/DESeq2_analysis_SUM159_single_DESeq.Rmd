@@ -48,8 +48,8 @@ exp_info = tribble(
 	here('salmon_alignments/batch_01/rep_02/Dinac/quant.sf'), 1, 2, "Dina",
 	here('salmon_alignments/batch_01/rep_01/Ent/quant.sf'), 1, 1, "Ent",
 	here('salmon_alignments/batch_01/rep_02/Ent/quant.sf'), 1, 2, "Ent",
-	here('salmon_alignments/batch_01/rep_01/JIB04/quant.sf'), 1, 1, "JIB.04",
-	here('salmon_alignments/batch_01/rep_02/JIB04/quant.sf'), 1, 2, "JIB.04",
+	here('salmon_alignments/batch_01/rep_01/JIB04/quant.sf'), 1, 1, "JIB.04.low",
+	here('salmon_alignments/batch_01/rep_02/JIB04/quant.sf'), 1, 2, "JIB.04.low",
 	here('salmon_alignments/batch_01/rep_01/MK2206/quant.sf'), 1, 1, "MK2206",
 	here('salmon_alignments/batch_01/rep_02/MK2206/quant.sf'), 1, 2, "MK2206",
 	here('salmon_alignments/batch_01/rep_01/Tram/quant.sf'), 1, 1, "Tram",
@@ -57,14 +57,14 @@ exp_info = tribble(
 	
 	here('salmon_alignments/batch_02/rep_01/DMSO/quant.sf'), 2, 1, "DMSO",
 	here('salmon_alignments/batch_02/rep_02/DMSO/quant.sf'), 2, 2, "DMSO",
-	here('salmon_alignments/batch_02/rep_01/JIB04/quant.sf'), 2, 1, "JIB.04",
-	here('salmon_alignments/batch_02/rep_02/JIB04/quant.sf'), 2, 2, "JIB.04",
+	here('salmon_alignments/batch_02/rep_01/JIB04/quant.sf'), 2, 1, "JIB.04.high",
+	here('salmon_alignments/batch_02/rep_02/JIB04/quant.sf'), 2, 2, "JIB.04.high",
 	here('salmon_alignments/batch_02/rep_01/Navi/quant.sf'), 2, 1, "Navitoclax",
 	here('salmon_alignments/batch_02/rep_02/Navi/quant.sf'), 2, 2, "Navitoclax",
 	here('salmon_alignments/batch_02/rep_01/Paclit/quant.sf'), 2, 1, "Paclitaxel",
 	here('salmon_alignments/batch_02/rep_02/Paclit/quant.sf'), 2, 2, "Paclitaxel",
-	here('salmon_alignments/batch_02/rep_01/Rux/quant.sf'), 2, 1, "Ruxolibinib",
-	here('salmon_alignments/batch_02/rep_02/Rux/quant.sf'), 2, 2, "Ruxolibinib",
+	here('salmon_alignments/batch_02/rep_01/Rux/quant.sf'), 2, 1, "Ruxolitinib",
+	here('salmon_alignments/batch_02/rep_02/Rux/quant.sf'), 2, 2, "Ruxolitinib",
 	here('salmon_alignments/batch_02/rep_01/SGC/quant.sf'), 2, 1, "SGCCP30",
 	here('salmon_alignments/batch_02/rep_02/SGC/quant.sf'), 2, 2, "SGCCP30",
 
@@ -116,20 +116,20 @@ summary_stats = tribble(~treatment,~number_2fold,~num_kinases,~num_dark_kinases,
 
 for (this_comparison in resultsNames(dds_analysis)[-1]) {
 	dds_results = lfcShrink(dds_analysis, coef=this_comparison, type="apeglm")
-	
+
 	full_DESeq = rbind(
 		full_DESeq,
 		dds_results %>%
-			as.data.frame() %>% 
-			rownames_to_column(var = "ensembl_gene_id") %>% 
+			as.data.frame() %>%
+			rownames_to_column(var = "ensembl_gene_id") %>%
 			mutate(treatment = this_comparison) %>%
-			left_join(gene_to_hgnc) %>% 
+			left_join(gene_to_hgnc) %>%
 			dplyr::select("hgnc_symbol","treatment",everything())
 	)
-	
+
 	dds_results_filtered = dds_results %>%
 		as.data.frame() %>%
-		rownames_to_column(var = "ensembl_gene_id") %>% 
+		rownames_to_column(var = "ensembl_gene_id") %>%
 		filter(abs(log2FoldChange) >= 1, padj <= 0.05) %>%
 		left_join(gene_to_hgnc) %>%
 		filter(!is.na(hgnc_symbol)) %>%
@@ -140,7 +140,7 @@ for (this_comparison in resultsNames(dds_analysis)[-1]) {
 
 	dds_results_filtered_dark_kinase = dds_results_filtered %>%
 		filter(hgnc_symbol %in% dark_kinases$symbol)
-	
+
 	summary_stats = rbind(
 		summary_stats,
 		data.frame(
@@ -150,96 +150,12 @@ for (this_comparison in resultsNames(dds_analysis)[-1]) {
 			num_dark_kinases = dim(dds_results_filtered_dark_kinase)[1],
 			dk_diff_str = ifelse(dim(dds_results_filtered_dark_kinase)[1] == 0,
 													 "",
-													 glue_collapse(sort(dds_results_filtered_dark_kinase$hgnc_symbol), sep=" | "))	
+													 glue_collapse(sort(dds_results_filtered_dark_kinase$hgnc_symbol), sep=" | "))
 		)
 	)
 }
 
-write_csv(full_DESeq,here('DESeq_results/SUM159_full_DESeq2_single_DESeq.csv.gz'))
-write_csv(summary_stats,here('DESeq_results/SUM159_DESeq2_summary_single_DESeq.csv'))
+write_csv(full_DESeq,here('DESeq_results/SUM159_only_DESeq2_results.csv.gz'))
+write_csv(summary_stats,here('DESeq_results/SUM159_only_DESeq2_summary.csv'))
 toc()
-```
-
-# DMSO Comparisons
-
-## DMSO 1 vs DMSO 2
-
-```{r}
-exp_info = tribble(
-	~files, ~batch, ~rep, ~treatment,
-	
-	here('salmon_alignments/batch_01/rep_01/DMSO/quant.sf'), 1, 1, "DMSO",
-	here('salmon_alignments/batch_01/rep_02/DMSO/quant.sf'), 1, 2, "DMSO",
-	here('salmon_alignments/batch_02/rep_01/DMSO/quant.sf'), 2, 1, "DMSO 2",
-	here('salmon_alignments/batch_02/rep_02/DMSO/quant.sf'), 2, 2, "DMSO 2"
-)
-
-temp = collect_all_DESeq(exp_info)
-temp$DESeq_full_results = temp$DESeq_full_results %>%
-	mutate(treatment = "DMSO 1 vs DMSO 2", batch = 1)
-full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
-
-temp$DESeq_summary = temp$DESeq_summary %>% 
-	mutate(treatment = "DMSO 1 vs DMSO 2", batch = 1)
-summary_stats = rbind(summary_stats, temp$DESeq_summary)
-```
-
-## DMSO 1 vs DMSO 3
-
-```{r}
-exp_info = tribble(
-	~files, ~batch, ~rep, ~treatment,
-	
-	here('salmon_alignments/batch_01/rep_01/DMSO/quant.sf'), 1, 1, "DMSO",
-	here('salmon_alignments/batch_01/rep_02/DMSO/quant.sf'), 1, 2, "DMSO",
-	here('salmon_alignments/batch_03/rep_01/DMSO/quant.sf'), 3, 1, "DMSO 3",
-	here('salmon_alignments/batch_03/rep_02/DMSO/quant.sf'), 3, 2, "DMSO 3",
-	
-)
-
-temp = collect_all_DESeq(exp_info)
-temp$DESeq_full_results = temp$DESeq_full_results %>%
-	mutate(treatment = "DMSO 1 vs DMSO 3", batch = 1)
-full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
-
-temp$DESeq_summary = temp$DESeq_summary %>% 
-	mutate(treatment = "DMSO 1 vs DMSO 3", batch = 1)
-summary_stats = rbind(summary_stats, temp$DESeq_summary)
-```
-
-## DMSO 2 vs DMSO 3
-
-```{r}
-exp_info = tribble(
-	~files, ~batch, ~rep, ~treatment,
-	
-	here('salmon_alignments/batch_02/rep_01/DMSO/quant.sf'), 2, 1, "DMSO",
-	here('salmon_alignments/batch_02/rep_02/DMSO/quant.sf'), 2, 2, "DMSO",
-	here('salmon_alignments/batch_03/rep_01/DMSO/quant.sf'), 3, 1, "DMSO 3",
-	here('salmon_alignments/batch_03/rep_02/DMSO/quant.sf'), 3, 2, "DMSO 3"
-)
-
-temp = collect_all_DESeq(exp_info)
-temp$DESeq_full_results = temp$DESeq_full_results %>%
-	mutate(treatment = "DMSO 2 vs DMSO 3", batch = 1)
-full_DESeq = rbind(full_DESeq, temp$DESeq_full_results)
-
-temp$DESeq_summary = temp$DESeq_summary %>% 
-	mutate(treatment = "DMSO 2 vs DMSO 3", batch = 1)
-summary_stats = rbind(summary_stats, temp$DESeq_summary)
-```
-
-# Summary Output
-
-```{r}
-summary_stats_output = summary_stats %>% 
-	select(treatment,batch,everything()) %>% 
-	rename("Genes" = number_2fold,
-				 "Kinases" = num_kinases,
-				 "Dark Kinases" = num_dark_kinases,
-				 "IDG Kinases" = dk_diff_str)
-
-write_csv(summary_stats_output,here('DESeq_results/SUM159_DESeq2_summary.csv'))
-
-write_csv(full_DESeq, here('DESeq_results/SUM159_full_DESeq2.csv.gz'))
 ```

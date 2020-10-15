@@ -1,0 +1,55 @@
+---
+title: "Cross Line Gene Sets"
+author: "Matthew Berginski"
+date: "10/13/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(hypeR)
+library(tidyverse)
+library(magrittr)
+library(here)
+library(DarkKinaseTools)
+library(glue)
+
+genesets <- msigdb_gsets("Homo sapiens", "H")
+```
+
+```{r}
+cross_line_fold_changes = read_csv(here('DESeq_results/All_full_DESeq2_cross_line_comps.csv.gz'))
+
+unique_treatments = unique(cross_line_fold_changes$treatment)
+
+all_pathway_hits = data.frame();
+pathway_hits_list = list();
+
+pathway_hits_by_treatment = list();
+
+for (this_treatment in unique_treatments) {
+	sig <- cross_line_fold_changes %>% 
+		filter(!is.na(hgnc_symbol), treatment == this_treatment) %>% 
+		arrange(desc(log2FoldChange)) %>% 
+		select(hgnc_symbol,log2FoldChange) %>% 
+		deframe()
+	
+	hyper_hits = hypeR(sig, genesets, test="kstest", fdr=0.05/length(unique_treatments), plotting=TRUE)
+	
+	all_pathway_hits = rbind(all_pathway_hits, hyper_hits$data %>% mutate(treatment = this_treatment))
+	
+	pathway_hits_list[[this_treatment]] = hyper_hits$data$label
+	
+}
+
+split_tibble <- function(tibble, col = 'col') tibble %>% split(., .[, col])
+
+pathway_hits_by_treatment = split_tibble(all_pathway_hits, 'label')
+
+write_csv(all_pathway_hits,here('analysis/cross_line_gene_sets/cross_cell_line_pathway_hits.csv'))
+```
+
+```{r}
+upset(fromList(pathway_hits_list), order.by = "freq", nsets=15)
+
+upset(fromList(pathway_hits_by_treatment), order.by = "freq", nsets = 15)
+```

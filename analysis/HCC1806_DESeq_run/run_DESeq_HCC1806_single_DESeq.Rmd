@@ -10,7 +10,6 @@ library("tximeta")
 library("DESeq2")
 
 library("AnnotationDbi")
-library("org.Hs.eg.db")
 library("BiocParallel")
 
 register(MulticoreParam(8))

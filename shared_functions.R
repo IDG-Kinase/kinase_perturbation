@@ -7,19 +7,22 @@ collect_all_DESeq <- function(exp_info, ...) {
 		left_join(gene_to_hgnc) %>% 
 		select("hgnc_symbol",everything())
 	
-	results$DESeq_summary = filter_DESeq(raw_DESeq_results, ...)
+	filtered_results = filter_DESeq(results$DESeq_full_results)
+	
+	results$DESeq_summary = filter_DESeq(filtered_results, ...)
 	
 	return(results)
 }
 
-filter_DESeq <- function(dds_results, ...) {
-	dds_results_filtered = as.data.frame(dds_results)
-	dds_results_filtered$ensembl_gene_id = rownames(dds_results)
-	dds_results_filtered = dds_results_filtered %>%
+filter_DESeq <- function(dds_results) {
+	dds_results_filtered = dds_results %>%
 		filter(abs(log2FoldChange) >= 1, padj <= 0.05) %>%
-		left_join(gene_to_hgnc) %>%
 		filter(!is.na(hgnc_symbol))
 	
+	return(dds_results_filtered)
+}
+
+summarize_DESeq_results <- function(dds_results_filtered) {
 	dds_results_filtered_kinase = dds_results_filtered %>%
 		filter(hgnc_symbol %in% all_kinases$symbol)
 	

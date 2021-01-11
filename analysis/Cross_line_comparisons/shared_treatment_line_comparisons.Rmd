@@ -206,14 +206,12 @@ for (this_comparison in resultsNames(dds_analysis)[-1]) {
 	)
 }
 
-write_csv(full_DESeq,here('DESeq_results/All_full_DESeq2_single_DESeq.csv.gz'))
-write_csv(summary_stats,here('DESeq_results/All_DESeq2_summary_single_DESeq.csv'))
+write_csv(full_DESeq,here('DESeq_results/All_cell_treatment_DESeq2.csv.gz'))
+write_csv(summary_stats,here('DESeq_results/All_cell_treatment_DESeq2_summary.csv'))
 toc()
 ```
 
 ```{r}
-
-
 cleaned_summary_stats = summary_stats %>% 
 	separate(treatment,into = c('cell_line','treatment'), sep="\\.") %>% 
 	filter(str_detect(cell_line, "^cell_line")) %>%
@@ -225,8 +223,8 @@ average_genes = cleaned_summary_stats %>%
 	summarise(average_count = mean(number_2fold)) %>%
 	arrange(desc(average_count))
 
-cleaned_summary_stats = cleaned_summary_stats %>%
-	arrange(average_genes$treatment)
+# cleaned_summary_stats = cleaned_summary_stats %>%
+# 	arrange(average_genes$treatment)
 
 cleaned_summary_stats %>%
 	select(-dk_diff_str) %>%
@@ -242,51 +240,51 @@ cleaned_summary_stats %>%
 ###############################################################################
 
 ```{r, eval=F}
-single_run_HCC1806 = read_csv(here('DESeq_results/HCC1806_full_DESeq2.csv.gz'))
-
-full_DESeq_temp = full_DESeq %>%
-	select(treatment, ensembl_gene_id, log2FoldChange) %>%
-	separate(treatment, into = c('cell_line','treatment'), sep="\\.") %>%
-	filter(cell_line == "cell_lineHCC1806") %>%
-	mutate(treatment = str_replace_all(treatment,"treatment","")) %>%
-	mutate(treatment = case_when(
-		treatment == "Ent" ~ "Entinostat",
-		treatment == "JIB" ~ "JIB-04",
-		TRUE ~ treatment
-	)) %>%
-	select(-cell_line) %>%
-	rename(log2_full_set = log2FoldChange)
-
-HCC_joined = inner_join(single_run_HCC1806, full_DESeq_temp)
-
-correlation_summary = HCC_joined %>% 
-	group_by(treatment) %>% 
-	summarise(tidy(cor.test(log2FoldChange,log2_full_set))) 
-
-ggplot(HCC_joined, aes(x=log2FoldChange,y=log2_full_set)) + geom_density_2d() + facet_wrap(~treatment)
+# single_run_HCC1806 = read_csv(here('DESeq_results/HCC1806_full_DESeq2.csv.gz'))
+# 
+# full_DESeq_temp = full_DESeq %>%
+# 	select(treatment, ensembl_gene_id, log2FoldChange) %>%
+# 	separate(treatment, into = c('cell_line','treatment'), sep="\\.") %>%
+# 	filter(cell_line == "cell_lineHCC1806") %>%
+# 	mutate(treatment = str_replace_all(treatment,"treatment","")) %>%
+# 	mutate(treatment = case_when(
+# 		treatment == "Ent" ~ "Entinostat",
+# 		treatment == "JIB" ~ "JIB-04",
+# 		TRUE ~ treatment
+# 	)) %>%
+# 	select(-cell_line) %>%
+# 	rename(log2_full_set = log2FoldChange)
+# 
+# HCC_joined = inner_join(single_run_HCC1806, full_DESeq_temp)
+# 
+# correlation_summary = HCC_joined %>% 
+# 	group_by(treatment) %>% 
+# 	summarise(tidy(cor.test(log2FoldChange,log2_full_set))) 
+# 
+# ggplot(HCC_joined, aes(x=log2FoldChange,y=log2_full_set)) + geom_density_2d() + facet_wrap(~treatment)
 ```
 
 ```{r, eval=F}
-single_run_SUM159 = read_csv(here('DESeq_results/SUM159_full_DESeq2.csv.gz'))
-
-full_DESeq_temp = full_DESeq %>%
-	select(treatment, ensembl_gene_id, log2FoldChange) %>%
-	separate(treatment, into = c('cell_line','treatment'), sep="\\.") %>%
-	filter(cell_line == "cell_lineSUM159") %>%
-	mutate(treatment = str_replace_all(treatment,"treatment","")) %>%
-	mutate(treatment = case_when(
-		treatment == "Ent" ~ "Entinostat",
-		treatment == "JIB" ~ "JIB-04 High Dose",
-		TRUE ~ treatment
-	)) %>%
-	select(-cell_line) %>%
-	rename(log2_full_set = log2FoldChange)
-
-SUM159_joined = inner_join(single_run_SUM159, full_DESeq_temp)
-
-correlation_summary = SUM159_joined %>% 
-	group_by(treatment) %>% 
-	summarise(tidy(cor.test(log2FoldChange,log2_full_set))) 
+# single_run_SUM159 = read_csv(here('DESeq_results/SUM159_full_DESeq2.csv.gz'))
+# 
+# full_DESeq_temp = full_DESeq %>%
+# 	select(treatment, ensembl_gene_id, log2FoldChange) %>%
+# 	separate(treatment, into = c('cell_line','treatment'), sep="\\.") %>%
+# 	filter(cell_line == "cell_lineSUM159") %>%
+# 	mutate(treatment = str_replace_all(treatment,"treatment","")) %>%
+# 	mutate(treatment = case_when(
+# 		treatment == "Ent" ~ "Entinostat",
+# 		treatment == "JIB" ~ "JIB-04 High Dose",
+# 		TRUE ~ treatment
+# 	)) %>%
+# 	select(-cell_line) %>%
+# 	rename(log2_full_set = log2FoldChange)
+# 
+# SUM159_joined = inner_join(single_run_SUM159, full_DESeq_temp)
+# 
+# correlation_summary = SUM159_joined %>% 
+# 	group_by(treatment) %>% 
+# 	summarise(tidy(cor.test(log2FoldChange,log2_full_set))) 
 
 # ggplot(SUM159_joined, aes(x=log2FoldChange,y=log2_full_set)) + geom_density_2d() + facet_wrap(~treatment)
 ```
@@ -361,8 +359,8 @@ for (this_treatment in treatment_set) {
 	)
 }
 
-write_csv(full_DESeq_cell_line_comp,here('DESeq_results/All_full_DESeq2_cross_line_comps.csv.gz'))
-write_csv(summary_stats_treatments,here('DESeq_results/All_DESeq2_summary_cross_line_comps.csv'))
+write_csv(full_DESeq_cell_line_comp,here('DESeq_results/All_cell_treatment_DESeq2_cross_line_comps.csv.gz'))
+write_csv(summary_stats_treatments,here('DESeq_results/All_cell_treatment_DESeq2_cross_line_comps_summary.csv'))
 toc()
 ```
 

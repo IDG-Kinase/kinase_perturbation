@@ -141,12 +141,48 @@ get_transcript_to_hgnc <- function() {
 		
 		write_csv(transcript_to_hgnc, here('transcript_to_hgnc.csv.gz'))
 	} else {
-		transcript_to_hgnc = readr::read_csv(here('transcript_to_hgnc.csv.gz')) %>%
+		transcript_to_hgnc = readr::read_csv(here('transcript_to_hgnc.csv.gz'), 
+																				 col_types = cols(
+																				 	ensembl_gene_id = col_character(),
+																				 	ensembl_transcript_id = col_character(),
+																				 	ensembl_transcript_id_version = col_character(),
+																				 	hgnc_symbol = col_character()
+																				 )) %>%
 			#The DESeq transcript to gene level summarization doesn't like NA values in
 			#the gene level targets, so I'm going to convert all the NA to "", so they
 			#can be grouped and tossed out later
 			mutate(hgnc_symbol = ifelse(is.na(hgnc_symbol), "", hgnc_symbol))
-			
+		
 	}
 }
 
+gather_gene_TPM_values <- function(exp_info) {
+	transcript_to_hgnc = get_transcript_to_hgnc()
+	
+	full_TPM_data = data.frame(hgnc_symbol = sort(unique(transcript_to_hgnc$hgnc_symbol))) %>%
+		filter(hgnc_symbol != "")
+	
+	for (i in 1:dim(exp_info)[1]) {
+		data_set_name = paste0(exp_info$treatment[i], "-batch_",exp_info$batch[i],"-rep_",exp_info$rep[i])
+		this_salmon_data = read_tsv(here(exp_info$files[i]), 
+																col_types = cols(
+																	Name = col_character(),
+																	Length = col_double(),
+																	EffectiveLength = col_double(),
+																	TPM = col_double(),
+																	NumReads = col_double()
+																))
+		
+		this_salmon_data = this_salmon_data %>% 
+			left_join(transcript_to_hgnc %>% select(ensembl_transcript_id_version,hgnc_symbol), 
+								by = c('Name' = 'ensembl_transcript_id_version')) %>%
+			filter(hgnc_symbol != "") %>%
+			group_by(hgnc_symbol) %>%
+			summarise(TPM = sum(TPM)) %>%
+			rename(!!data_set_name := TPM)
+		
+		full_TPM_data = full_TPM_data %>% left_join(this_salmon_data, by='hgnc_symbol')
+	}
+	
+	return(full_TPM_data)
+}

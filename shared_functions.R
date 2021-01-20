@@ -119,6 +119,13 @@ get_DESeq_analysis <- function(drug_perturb_files,
 	keep <- rowSums(counts(dds)) > 1
 	dds <- dds[keep,]
 	
+	#Code to deal with collapsing technical replicates into single columns in
+	#DESeq, will only be used if a "run" column is defined, which should be a
+	#unique name for each run, which collapses together in the names field.
+	if ("run" %in% colnames(drug_perturb_files)) {
+		dds <- collapseReplicates(dds, dds$names, dds$run)
+	}
+
 	dds_analysis <- DESeq(dds)
 }
 

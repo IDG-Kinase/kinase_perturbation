@@ -63,8 +63,6 @@ exp_info = tribble(
 	here('salmon_alignments/batch_03/rep_02/Palbo/quant.sf'), 3, 2, "Palbociclib",
 )
 
-source(here('shared_functions.R'))
-
 dds_analysis = get_DESeq_analysis(exp_info, DESeq_design = ~batch + treatment)
 DESeq_results = collect_full_DESeq_and_summary(dds_analysis)
 

@@ -1,0 +1,841 @@
+---
+title: "DESeq2 Output Clustering"
+author: "Matthew Berginski"
+date: "3/23/2020"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ggdendro)
+library(here)
+library(broom)
+library(tictoc)
+library(ggforce)
+library(glue)
+
+library(BerginskiRMisc)
+library(DarkKinaseTools)
+```
+
+# Read in DESeq2 Normalized Log Changes
+
+```{r read in data, cache=TRUE, include=FALSE}
+
+process_DESeq_for_correlations <- function(file, cell_line) {
+	DESeq_fold_change = read_csv(file, col_types = cols(
+		hgnc_symbol = col_character(),
+		treatment = col_character(),
+		baseMean = col_double(),
+		log2FoldChange = col_double(),
+		lfcSE = col_double(),
+		pvalue = col_double(),
+		padj = col_double()
+	)) %>%
+		filter(!str_detect(treatment,"^batch")) %>%
+		mutate(cell_line_treatment = paste0(cell_line,"_",treatment)) %>%
+		select(hgnc_symbol,cell_line_treatment,log2FoldChange)
+	
+	return(DESeq_fold_change)
+}
+
+fold_change = bind_rows(
+	process_DESeq_for_correlations(here('DESeq_results/SUM159_only_DESeq2_results.csv.gz'),"SUM159"),
+	process_DESeq_for_correlations(here('DESeq_results/SUM229_only_DESeq2_results.csv.gz'),"SUM229"),
+	process_DESeq_for_correlations(here('DESeq_results/HCC1806_only_DESeq2_results.csv.gz'),"HCC1806"),
+	process_DESeq_for_correlations(here('DESeq_results/MDAMB231_only_DESeq2_results.csv.gz'),"MDAMB231")
+)
+
+low_gene_counts = fold_change %>% 
+	count(hgnc_symbol) %>%
+	filter(n < 15)
+
+fold_change_filtered = fold_change %>%
+	filter(! hgnc_symbol %in% low_gene_counts$hgnc_symbol)
+
+fold_change_wide_treatments = fold_change_filtered %>%
+	pivot_wider(names_from = cell_line_treatment, values_from = log2FoldChange)
+
+fold_change_wide_genes = fold_change_filtered %>%
+	pivot_wider(names_from = hgnc_symbol, values_from = log2FoldChange)
+```
+
+```{r}
+tic()
+gene_cor = cor(fold_change_wide_genes %>% 
+							 	column_to_rownames(var = "cell_line_treatment") %>% 
+							 	identity(), 
+							 use="pairwise.complete.obs")
+gene_cor[is.na(gene_cor)] = -1
+# write_rds(gene_cor, here('cluster_sets/full_genome_correlation_matrix.rds'))
+
+# gene_cor_df = gene_cor %>% 
+# 	as.data.frame() %>% 
+# 	rownames_to_column(var = "gene_1") %>% 
+# 	mutate(gene_1 = as.factor(gene_1)) %>% 
+# 	pivot_longer(-gene_1, names_to = "gene_2", values_to = "cor") %>%
+# 	mutate(gene_2 = as.factor(gene_2)) %>%
+# 	write_rds(here('cluster_sets/full_genome_correlation.rds'))
+
+# gene_cor_dist = as.dist(1 - gene_cor)
+# 
+# gene_cor_tree = hclust(gene_cor_dist)
+# 
+# gene_all_clusters = cutree(gene_cor_tree,k = 2:(dim(fold_change_wide_genes)[2] - 1))
+
+gene_all_clusters = as.dist(1 - gene_cor) %>%
+	hclust() %>%
+	cutree(k = 2:(dim(fold_change_wide_genes)[2] - 1))
+toc()
+```
+
+```{r}
+# This would be an elegant way to get the size of all clusters for each tree
+# cut, but it takes too much RAM. If this would work, we can join it back with
+# the gene lists and instead now have to march through one by one. Oh
+# well...maybe the grad student of 2030 can make this work.
+
+# tic()
+# gene_cluster_counts = gene_all_clusters %>%
+# 	as.data.frame() %>%
+# 	rownames_to_column(var = "hgnc_symbol") %>%
+# 	mutate(hgnc_symbol = as.factor(hgnc_symbol)) %>%
+# 	pivot_longer(-hgnc_symbol,names_to = "number_of_clusters", values_to = "cluster_id") %>%
+# 	mutate(number_of_clusters = as.factor(number_of_clusters)) %>%
+# 	mutate(cluster_id = as.factor(cluster_id)) %>%
+# 	count(number_of_clusters, cluster_id) %>%
+# 	identity()
+# toc()
+```
+
+
+```{r}
+tic()
+gene_all_clusters_df = gene_all_clusters %>%
+	as.data.frame() %>%
+	rownames_to_column(var = "hgnc_symbol") %>%
+	mutate(hgnc_symbol = as.factor(hgnc_symbol))
+
+gene_cluster_counts = data.frame()
+
+for (cluster_num in c(2:dim(gene_all_clusters_df)[2])) {
+	gene_cluster_df = data.frame(hgnc_symbol = gene_all_clusters_df[,1],
+															 cluster_id = gene_all_clusters_df[,cluster_num])
+	
+	gene_cluster_df = gene_cluster_df %>%
+		left_join(gene_cluster_df %>% count(cluster_id), by="cluster_id") %>%
+		mutate(cluster_count = cluster_num)
+	
+	gene_cluster_counts = rbind(gene_cluster_counts,
+															gene_cluster_df)
+	
+	if (cluster_num %% 1000 = 0) {
+		gene_cluster_counts = gene_cluster_counts %>% 
+			distinct(hgnc_symbol, n, .keep_all = T) %>%
+			write_rds(here())
+	}
+}
+
+gene_cluster_counts = gene_cluster_counts %>% 
+	distinct(hgnc_symbol, n, .keep_all = T) %>%
+	write_rds(here('cluster_sets/full_genome_cluster_count_splits.rds'))
+
+toc()
+```
+
+```{r}
+gene_cluster_counts = read_rds(here('cluster_sets/full_genome_cluster_count_splits.rds'))
+
+get_cluster_members <- function(number_of_clusters, cluster_id) {
+	return(names(gene_all_clusters[gene_all_clusters[,number_of_clusters-1] == cluster_id,number_of_clusters-1]))
+}
+
+low_cluster_sizes = gene_cluster_counts %>% 
+	filter(n <= 10, n > 1) %>%
+	mutate(gene_list = map2(cluster_count,cluster_id,get_cluster_members))
+```
+
+```{r}
+PKMYT1_set = low_cluster_sizes %>%
+	filter(hgnc_symbol == "PKMYT1")
+
+temp_fold = fold_change_filtered %>% 
+	filter(hgnc_symbol %in% PKMYT1_set$gene_list[[3]]) %>%
+	pivot_wider(names_from = hgnc_symbol, values_from=log2FoldChange) %>% 
+	select(-cell_line_treatment) %>%
+	pivot_longer(-PKMYT1, names_to = "second_gene",values_to = "fold_change")
+
+ggplot(temp_fold, aes(x=PKMYT1,y=fold_change, color=second_gene)) + 
+	geom_point() +
+	labs(x="Log2 Fold Change in PKMYT1",y="Log2 Fold Change", color="") +
+	BerginskiRMisc::theme_berginski()
+ggsave(here('analysis/DESeq2_clustering/PKMYT1_1.png'), height=4,width=4)
+
+temp_fold = fold_change_filtered %>% 
+	filter(hgnc_symbol %in% PKMYT1_set$gene_list[[2]]) %>%
+	pivot_wider(names_from = hgnc_symbol, values_from=log2FoldChange) %>% 
+	select(-cell_line_treatment) %>%
+	pivot_longer(-PKMYT1, names_to = "second_gene",values_to = "fold_change")
+
+ggplot(temp_fold, aes(x=PKMYT1,y=fold_change, color=second_gene)) + 
+	geom_point() +
+	labs(x="Log2 Fold Change in PKMYT1",y="Log2 Fold Change", color="") +
+	BerginskiRMisc::theme_berginski()
+ggsave(here('analysis/DESeq2_clustering/PKMYT1_2.png'), height=4,width=4)
+
+temp_fold = fold_change_filtered %>% 
+	filter(hgnc_symbol %in% PKMYT1_set$gene_list[[1]]) %>%
+	pivot_wider(names_from = hgnc_symbol, values_from=log2FoldChange) %>% 
+	select(-cell_line_treatment) %>%
+	pivot_longer(-PKMYT1, names_to = "second_gene",values_to = "fold_change")
+
+ggplot(temp_fold, aes(x=PKMYT1,y=fold_change, color=second_gene)) + 
+	geom_point() +
+	labs(x="Log2 Fold Change in PKMYT1",y="Log2 Fold Change", color="") +
+	BerginskiRMisc::theme_berginski()
+ggsave(here('analysis/DESeq2_clustering/PKMYT1_3.png'), height=4,width=4)
+
+```
+
+```{r}
+HKDC1_set = low_cluster_sizes %>%
+	filter(hgnc_symbol == "HKDC1")
+
+temp_fold = fold_change_filtered %>% 
+	filter(hgnc_symbol %in% HKDC1_set$gene_list[[3]]) %>%
+	pivot_wider(names_from = hgnc_symbol, values_from=log2FoldChange) %>% 
+	select(-cell_line_treatment) %>%
+	pivot_longer(-HKDC1, names_to = "second_gene",values_to = "fold_change")
+
+ggplot(temp_fold, aes(x=HKDC1,y=fold_change, color=second_gene)) + 
+	geom_point() +
+	labs(x="Log2 Fold Change in HKDC1",y="Log2 Fold Change", color="") +
+	BerginskiRMisc::theme_berginski()
+ggsave(here('analysis/DESeq2_clustering/HKDC1_1.png'), height=4,width=4)
+
+temp_fold = fold_change_filtered %>% 
+	filter(hgnc_symbol %in% HKDC1_set$gene_list[[2]]) %>%
+	pivot_wider(names_from = hgnc_symbol, values_from=log2FoldChange) %>% 
+	select(-cell_line_treatment) %>%
+	pivot_longer(-HKDC1, names_to = "second_gene",values_to = "fold_change")
+
+ggplot(temp_fold, aes(x=HKDC1,y=fold_change, color=second_gene)) + 
+	geom_point() +
+	labs(x="Log2 Fold Change in HKDC1",y="Log2 Fold Change", color="") +
+	BerginskiRMisc::theme_berginski()
+ggsave(here('analysis/DESeq2_clustering/HKDC1_2.png'), height=4,width=4)
+
+temp_fold = fold_change_filtered %>% 
+	filter(hgnc_symbol %in% HKDC1_set$gene_list[[1]]) %>%
+	pivot_wider(names_from = hgnc_symbol, values_from=log2FoldChange) %>% 
+	select(-cell_line_treatment) %>%
+	pivot_longer(-HKDC1, names_to = "second_gene",values_to = "fold_change")
+
+ggplot(temp_fold, aes(x=HKDC1,y=fold_change, color=second_gene)) + 
+	geom_point() +
+	labs(x="Log2 Fold Change in HKDC1",y="Log2 Fold Change", color="") +
+	BerginskiRMisc::theme_berginski()
+ggsave(here('analysis/DESeq2_clustering/HKDC1_3.png'), height=4,width=4)
+
+```
+
+# Data Organizing/Filtering
+
+```{r data organization, cache=TRUE, include=FALSE}
+high_missing_ratio_kinases = DESeq_ratios %>%
+	filter(hgnc_symbol %in% all_kinases$symbol,is.na(log2FoldChange)) %>%
+	count(hgnc_symbol) %>%
+	filter(n > 2) %>%
+	pull(hgnc_symbol)
+
+DEseq_only_kinases = DESeq_ratios %>%
+	filter(hgnc_symbol %in% all_kinases$symbol & 
+				 	! hgnc_symbol %in% high_missing_ratio_kinases &
+				 	str_detect(treatment,'^cell_line'))
+
+drug_perturb_ratio_wide_kinases = DEseq_only_kinases %>%
+	# mutate(treatment_batch = paste0(treatment,'_',batch)) %>%
+	select(treatment,hgnc_symbol,log2FoldChange) %>%
+	mutate(log2FoldChange = ifelse(is.na(log2FoldChange), 0, log2FoldChange)) %>%
+	pivot_wider(names_from = treatment, values_from = log2FoldChange)
+
+drug_perturb_ratio_wide_experiments = DEseq_only_kinases %>%
+	select(treatment,hgnc_symbol,log2FoldChange) %>%
+	mutate(log2FoldChange = ifelse(is.na(log2FoldChange), 0, log2FoldChange)) %>%
+	pivot_wider(names_from = hgnc_symbol, values_from = log2FoldChange)
+```
+
+## Treatment Condition Analysis
+
+```{r experiment correlation UMAP, cache=TRUE, include=FALSE}
+experiment_correlations_ratio = amap::Dist(drug_perturb_ratio_wide_experiments %>% 
+																					 	column_to_rownames(var = "treatment"),
+																					 method="correlation")
+
+umap_settings = umap.defaults
+umap_settings$init = "dist"
+
+experiment_correlations_ratio_umap = experiment_correlations_ratio %>%
+	as.matrix() %>%
+	umap(config = umap_settings) %>%
+	identity()
+
+experiment_umap_plot = data.frame(umap_1 = experiment_correlations_ratio_umap$layout[,1],
+																	umap_2 = experiment_correlations_ratio_umap$layout[,2],
+																	experiment = drug_perturb_ratio_wide_experiments$treatment)
+
+library(ggrepel)
+library(BerginskiRMisc)
+ggplot(experiment_umap_plot, aes(x=umap_1,y=umap_2,label = experiment)) +
+	geom_point(alpha=0.75) + theme_berginski() + xlab('UMAP 1') + ylab('UMAP 2') +
+	geom_text_repel(
+		segment.size  = 0.2,
+		segment.color = "grey50",
+		force = 10)
+ggsave(here('figures/clustering/experiment_correlation_umap.png'))
+```
+
+```{r correlation histogram}
+correlation_vals = data.frame(
+	cor_vals = as.vector((experiment_correlations_ratio - 1)*-1)
+)
+
+ggplot(correlation_vals, aes(x=cor_vals)) + 
+	geom_histogram() +
+	xlab('Pairwise Treatment Correlations') +
+	ylab('') +
+	geom_vline(aes(xintercept = mean(cor_vals)), color='red') +
+	theme_berginski()
+ggsave(here('figures/clustering/experiment_correlation_vals.png'),height=4,width=4)
+```
+
+```{r, cache=TRUE, include=FALSE}
+experiment_cluster_ratio = hclust(experiment_correlations_ratio)
+
+dd.row <- as.dendrogram(experiment_cluster_ratio)
+ddata_x <- dendro_data(dd.row)
+
+dendro_labels = label(ddata_x)
+```
+
+```{r experiment cluster plot}
+ggplot(segment(ddata_x)) +
+	geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+	geom_text(data = dendro_labels,
+						aes(label = label, x=x,y=0), angle=90, hjust=1.1) +
+	# ylim(c(-1,NA)) +
+	xlab('') +
+	theme_berginski() +
+	theme(axis.title.x=element_blank(),
+				axis.text.x=element_blank(),
+				axis.ticks.x=element_blank()) +
+	# scale_y_discrete("Correlation Distance", waiver(), waiver(), c(0,2)) +
+	scale_y_continuous("Kinase Correlation Distance", breaks = c(0,0.5,1), limits = c(-0.8,NA)) +
+	NULL
+ggsave(here('figures/clustering/experiment_cluster_tree.png'),height=4,width=4)
+trimImage(here('figures/clustering/experiment_cluster_tree.png'))
+```
+
+## Kinase Analysis
+
+```{r}
+kinase_correlations_ratio = amap::Dist(drug_perturb_ratio_wide_kinases %>% 
+																			 	column_to_rownames(var = "hgnc_symbol"),
+																			 method="correlation")
+```
+
+```{r}
+umap_settings = umap.defaults
+umap_settings$min_dist = 0.01
+
+kinase_correlations_ratio_umap = drug_perturb_ratio_wide_kinases %>%
+	column_to_rownames(var='hgnc_symbol') %>%
+	umap() %>%
+	identity()
+
+kinase_ratio_plot = data.frame(umap_1 = kinase_correlations_ratio_umap$layout[,1],
+															 umap_2 = kinase_correlations_ratio_umap$layout[,2],
+															 symbol = drug_perturb_ratio_wide_kinases$hgnc_symbol) %>%
+	left_join(all_kinases %>% select(symbol, class)) %>%
+	mutate(label = case_when(
+		# class == "Dark" ~ symbol,
+		symbol == "PKMYT1" ~ symbol,
+		symbol == "TLK2" ~ symbol,
+		symbol == "CDK12" ~ symbol,
+		symbol == "CDK13" ~ symbol,
+		# symbol == "PIP5K1B" ~ symbol,
+		TRUE ~ ""
+	))
+
+library(ggrepel)
+library(BerginskiRMisc)
+ggplot(kinase_ratio_plot, aes(x=umap_1,y=umap_2,color = class,label = label)) +
+	geom_point(alpha=0.75) + theme_berginski() + xlab('UMAP 1') + ylab('UMAP 2') +
+	geom_text_repel(
+		segment.size  = 0.2,
+		segment.color = "grey50",
+		force = 10)
+ggsave(here('figures/clustering/kinase_cluster_ratio_umap.png'))
+```
+
+```{r}
+umap_settings = umap.defaults
+umap_settings$min_dist = 0.001
+umap_settings$n_neighbors = 10
+umap_settings$random_state = 1234
+umap_settings$input = "dist"
+
+kinase_correlations_ratio_umap = kinase_correlations_ratio %>%
+	as.matrix() %>%
+	umap(config = umap_settings)
+
+kinase_ratio_plot = data.frame(umap_1 = kinase_correlations_ratio_umap$layout[,1],
+															 umap_2 = kinase_correlations_ratio_umap$layout[,2],
+															 symbol = drug_perturb_ratio_wide_kinases$hgnc_symbol) %>%
+	left_join(all_kinases %>% select(symbol, class)) %>%
+	mutate(label = case_when(
+		# class == "Dark" ~ symbol,
+		symbol == "PKMYT1" ~ symbol,
+		symbol == "TLK2" ~ symbol,
+		# symbol == "BRSK2" ~ symbol,
+		symbol == "CDK12" ~ symbol,
+		symbol == "CDK13" ~ symbol,
+		symbol == "SBK1" ~ symbol,
+		symbol == "CDC42BPG" ~ symbol,
+		symbol == "PAK3" ~ symbol,
+		# symbol == "PIP5K1B" ~ symbol,
+		TRUE ~ ""
+	)) %>%
+	identity()
+
+library(ggrepel)
+library(BerginskiRMisc)
+ggplot(kinase_ratio_plot, aes(x=umap_1, y=umap_2, label = label,  color = class)) +
+	geom_point(alpha = 0.75) + theme_berginski() + xlab('UMAP 1') + ylab('UMAP 2') +
+	geom_text_repel(
+		segment.size  = 1,
+		segment.color = "grey50",
+		force = 20,
+		show.legend = FALSE) +
+	scale_color_discrete(name="Kinase Type")
+ggsave(here('figures/clustering/kinase_cluster_ratio_correlation_umap.png'))
+
+```
+
+```{r, include = F}
+kinase_cluster_ratio = hclust(kinase_correlations_ratio)
+
+dd.row <- as.dendrogram(kinase_cluster_ratio)
+ddata_x <- dendro_data(dd.row)
+
+dendro_labels = label(ddata_x) %>% left_join(all_kinases %>% select(symbol,class), by=c('label'='symbol'))
+
+end_points = ddata_x$segments %>% filter(yend == 0) %>%
+	left_join(dendro_labels, by=c('x'='x'))
+
+ggplot(segment(ddata_x)) +
+	geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+	# geom_text(data = dendro_labels,
+	# 					aes(label = label, x=x,y=0, color = class), angle=90, hjust=1) +
+	# ylim(c(-0.5,2)) +
+	# geom_hline(aes(yintercept = 1.2), color='red') +
+	xlab('') +
+	# geom_point(data = end_points, mapping = aes(x=xend,y=yend-0.02, color=class),shape='\u007C') +
+	geom_rect(data = end_points, mapping = aes(xmin=xend-0.5,xmax=xend+0.5,ymin=yend-0.25,ymax=yend-0.01,fill=class)) +
+	theme_berginski() +
+	theme(axis.title.x=element_blank(),
+				axis.text.x=element_blank(),
+				axis.ticks.x=element_blank()) +
+	scale_y_continuous(name = "Correlation Distance",breaks=seq(0,2,by=0.5)) +
+	scale_x_continuous(name = "",expand=c(0,0)) +
+	scale_fill_discrete(name = "Kinase Type")
+
+ggsave(here('figures/clustering/kinase_clustering_DESeq_correlation.png'),width=10*0.9,height=3*0.9,dpi = 300)
+trimImage(here('figures/clustering/kinase_clustering_DESeq_correlation.png'))
+```
+
+## Output Kinase Cluster Lists
+
+```{r}
+kinase_hier_clusters = as.data.frame(cutree(kinase_cluster_ratio,k = 15))
+names(kinase_hier_clusters) <- "cluster_num"
+kinase_hier_clusters = kinase_hier_clusters %>%
+	rownames_to_column(var = "hgnc_symbol") %>%
+	arrange(cluster_num, hgnc_symbol) %>%
+	left_join(all_kinases %>% select(class, symbol), by=c('hgnc_symbol'='symbol')) %>%
+	write_csv(here('cluster_sets/DESeq_kinase_correlation_clusters.csv'))
+
+kinase_cluster_counts = kinase_hier_clusters %>% 
+	count(cluster_num, name = "Total Kinases") %>%
+	left_join(kinase_hier_clusters %>% filter(class == "Dark") %>% count(cluster_num, name="Understudied Count")) %>%
+	left_join(kinase_hier_clusters %>% filter(class == "Light") %>% count(cluster_num, name="Well Studied Count")) %>%
+	write_csv(here('cluster_sets/DESeq_kinase_correlation_counts.csv'))
+```
+
+```{r}
+library(gridExtra)
+
+p<-tableGrob(kinase_hier_clusters %>% 
+						 	group_by(cluster_num,class) %>% 
+						 	count() %>% 
+						 	pivot_wider(names_from = 'class',values_from = n) %>%
+						 	rename('Cluster Number'="cluster_num"),
+						 rows = NULL)
+grid.arrange(p)
+ggsave(here('figures/clustering/kinase_clustering_table.png'),p)
+trimImage(here('figures/clustering/kinase_clustering_table.png'))
+
+```
+
+```{r}
+end_points_clusters = end_points %>% left_join(kinase_hier_clusters, by=c('label' = 'hgnc_symbol'))
+
+ggplot(segment(ddata_x)) +
+	geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+	# geom_text(data = dendro_labels,
+	# 					aes(label = label, x=x,y=0, color = class), angle=90, hjust=1) +
+	# ylim(c(-0.5,2)) +
+	# geom_hline(aes(yintercept = 1.2), color='red') +
+	xlab('') +
+	# geom_point(data = end_points, mapping = aes(x=xend,y=yend-0.02, color=class),shape='\u007C') +
+	# geom_rect(data = end_points, mapping = aes(xmin=xend-0.5,xmax=xend+0.5,ymin=yend-0.25,ymax=yend-0.01,fill=class)) +
+	geom_rect(data = end_points_clusters, 
+						mapping = aes(xmin=xend-0.5, 
+													xmax=xend+0.5, 
+													ymin=yend-0.01,
+													ymax=yend-0.25,
+													fill=as.factor(cluster_num))) +
+	theme_berginski() +
+	theme(axis.title.x=element_blank(),
+				axis.text.x=element_blank(),
+				axis.ticks.x=element_blank()) +
+	scale_y_continuous(name = "Correlation Distance",breaks=seq(0,2,by=0.5)) +
+	scale_x_continuous(name = "",expand=c(0,0)) +
+	scale_fill_discrete(name = "Kinase Cluster")
+
+ggsave(here('figures/clustering/kinase_clustering_cluster_color.png'),width=10,dpi = 300)
+trimImage(here('figures/clustering/kinase_clustering_cluster_color.png'))
+
+```
+
+```{r}
+umap_settings = umap.defaults
+umap_settings$min_dist = 0.01
+umap_settings$input = "dist"
+
+kinase_correlations_ratio_umap = kinase_correlations_ratio %>%
+	as.matrix() %>%
+	umap(config = umap_settings)
+
+kinase_ratio_plot = data.frame(umap_1 = kinase_correlations_ratio_umap$layout[,1],
+															 umap_2 = kinase_correlations_ratio_umap$layout[,2],
+															 symbol = drug_perturb_ratio_wide_kinases$hgnc_symbol) %>%
+	left_join(all_kinases %>% select(symbol, class)) %>%
+	left_join(kinase_hier_clusters %>% select(hgnc_symbol,cluster_num), by = c('symbol'='hgnc_symbol')) %>%
+	mutate(label = case_when(
+		# class == "Dark" ~ symbol,
+		symbol == "PKMYT1" ~ symbol,
+		symbol == "TLK2" ~ symbol,
+		symbol == "BRSK2" ~ symbol,
+		symbol == "CDK12" ~ symbol,
+		symbol == "CDK13" ~ symbol,
+		# symbol == "PIP5K1B" ~ symbol,
+		TRUE ~ ""
+	))
+
+library(ggrepel)
+library(BerginskiRMisc)
+ggplot(kinase_ratio_plot, aes(x=umap_1,y=umap_2,label = label, color=as.factor(cluster_num))) +
+	geom_point() + theme_berginski() + xlab('UMAP 1') + ylab('UMAP 2') +
+	geom_text_repel(
+		segment.size  = 0.2,
+		segment.color = "grey50",
+		force = 10)
+ggsave(here('figures/clustering/kinase_cluster_ratio_umap.png'))
+```
+
+## Try All Cluster Counts
+
+```{r all cluster num}
+kinase_hier_all_clusters = cutree(kinase_cluster_ratio,k = 2:dim(drug_perturb_ratio_wide_kinases)[1]) %>%
+	as.data.frame() %>% 
+	rownames_to_column(var = "symbol") %>% 
+	pivot_longer(-symbol, 
+							 names_to = "num_total_clusters", 
+							 values_to = "cluster_id") %>% 
+	mutate(num_total_clusters = as.factor(num_total_clusters)) %>% 
+	left_join(all_kinases %>% select(class,symbol)) %>% 
+	arrange(num_total_clusters,symbol)
+
+cluster_sizes = kinase_hier_all_clusters %>% 
+	group_by(num_total_clusters,cluster_id) %>% 
+	count(name = "num_in_cluster") 
+
+kinase_hier_all_clusters = kinase_hier_all_clusters %>% 
+	left_join(cluster_sizes)
+```
+
+```{r}
+get_associated_genes <- function(cluster_sets, gene_name = "PKMYT1", max_clustered_genes = Inf) {
+	associated_genes = data.frame()
+	
+	unique_cluster_sizes = cluster_sets %>% 
+		filter(symbol == gene_name, num_in_cluster <= max_clustered_genes) %>% 
+		pull(num_in_cluster) %>% 
+		unique() %>%
+		sort()
+	print(unique_cluster_sizes)
+	
+	for (this_cluster_size in unique_cluster_sizes) {
+		this_cluster_info = cluster_sets %>% 
+			filter(symbol == gene_name, num_in_cluster == this_cluster_size) %>% 
+			slice(1) %>%
+			select(-symbol,-class)
+		
+		cluster_members_at_level = cluster_sets %>% 
+			right_join(this_cluster_info, by = c("num_total_clusters", "cluster_id", "num_in_cluster"))
+		
+		associated_genes = rbind(associated_genes,
+														 cluster_members_at_level)
+	}
+	
+	return(associated_genes)
+}
+
+PKMYT1_set = get_associated_genes(cluster_sets = genome_hier_all_clusters, max_clustered_genes = 20)
+```
+
+```{r}
+build_gene_associate_table_text <- function(associated_genes) {
+	master_gene = associated_genes %>% 
+		filter(num_in_cluster == 1) %>% 
+		pull(symbol)
+	
+	cluster_sizes = associated_genes %>% 
+		filter(num_in_cluster != 1) %>%
+		pull(num_in_cluster) %>%
+		unique() %>%
+		sort()
+	
+	level_1_associated = associated_genes %>%
+		filter(num_in_cluster == cluster_sizes[1], symbol != master_gene)
+	
+	table_entries = data.frame(
+		level = 1,
+		associated_genes = glue_collapse(level_1_associated$symbol,sep = ", ")
+	)
+	
+	if (length(cluster_sizes) > 1) {
+		for (i in 2:length(cluster_sizes)) {
+			previous_genes = associated_genes %>%
+				filter(num_in_cluster == cluster_sizes[i-1]) %>%
+				pull(symbol)
+			
+			these_genes = associated_genes %>%
+				filter(! symbol %in% c(previous_genes, master_gene),
+							 num_in_cluster == cluster_sizes[i])
+			
+			table_entries = table_entries %>%
+				add_row(level = i, associated_genes = glue_collapse(these_genes$symbol, sep = ", "))
+			glue_collapse(these_genes$symbol)
+		}
+	}
+	return(table_entries)
+}
+
+test_set = get_associated_genes(cluster_sets = kinase_hier_all_clusters, gene_name = "HCK", max_clustered_genes = 20)
+
+test = build_gene_associate_table_text(test_set)
+p<-tableGrob(test %>%
+						 	rename("Associated Genes" = "associated_genes"),
+						 rows = NULL)
+grid.arrange(p)
+# ggsave(here('figures/clustering/kinase_clustering_table.png'),p)
+# trimImage(here('figures/clustering/kinase_clustering_table.png'))
+
+```
+
+```{r}
+dir.create(here('figures/clustering/associated_genes'), showWarnings = F)
+for (this_gene in unique(kinase_hier_all_clusters$symbol)) {
+	gene_set = get_associated_genes(cluster_sets = kinase_hier_all_clusters, 
+																	gene_name = this_gene, 
+																	max_clustered_genes = 20)
+	
+	gene_table = build_gene_associate_table_text(gene_set)
+	p<-tableGrob(gene_table %>%
+							 	rename("Associated Genes" = "associated_genes"),
+							 rows = NULL)
+	grid.arrange(p)
+	ggsave(here('figures/clustering/associated_genes',paste0(this_gene,'.png')),p)
+	trimImage(here('figures/clustering/associated_genes',paste0(this_gene,'.png')))
+}
+```
+
+## Visualize Changes in Kinase Expression
+
+```{r cluster_profiles}
+kinase_DESeq_ratios_clusters = DESeq_ratios %>% right_join(kinase_hier_clusters)
+
+treatment_summary = kinase_DESeq_ratios_clusters %>% 
+	group_by(treatment) %>%
+	summarise(mean_log2 = mean(log2FoldChange,na.rm=T),
+						lower_log2 = tidy(t.test(log2FoldChange))$conf.low,
+						upper_log2 = tidy(t.test(log2FoldChange))$conf.high)
+
+cluster_treatment_summary = kinase_DESeq_ratios_clusters %>%
+	group_by(cluster_num,treatment) %>% 
+	summarise(mean_log2 = mean(log2FoldChange,na.rm=T),
+						lower_log2 = tidy(t.test(log2FoldChange))$conf.low,
+						upper_log2 = tidy(t.test(log2FoldChange))$conf.high)
+
+for (this_cluster in sort(unique(kinase_hier_clusters$cluster_num))) {
+	this_plot = ggplot(kinase_DESeq_ratios_clusters %>% filter(cluster_num == this_cluster), 
+										 aes(x=treatment,y=log2FoldChange)) + 
+		# geom_jitter() +
+		geom_line(aes(group = hgnc_symbol),alpha=0.2) +
+		geom_point(data = cluster_treatment_summary %>% filter(cluster_num == this_cluster),
+							 aes(x=treatment,y=mean_log2), color='blue') +
+		geom_point(data = treatment_summary, aes(x=treatment,y=mean_log2), color='red') +
+		theme(axis.text.x=element_text(angle = -90, hjust = 0,vjust=0.5)) +
+		xlab('') +
+		ylab('Log 2 Fold Expression Change') +
+		scale_color_discrete(name="Gene") +
+		ggtitle(paste('Drug Response Profile for Cluster: ', this_cluster)) +
+		theme_berginski()
+	# 
+	# this_plot = ggplot(cluster_treatment_summary %>% filter(cluster_num == this_cluster),
+	# 									 aes(x=treatment,y=mean_log2, group=cluster_num)) +
+	# 	geom_pointrange(aes(ymin=lower_log2,ymax=upper_log2)) +
+	# 	ggtitle(paste('Drug Response Profile for Cluster: ', this_cluster)) +
+	# 	
+	# 	geom_pointrange(data = treatment_summary, 
+	# 									aes(ymin=lower_log2,ymax=lower_log2, group='overall'), color='blue',alpha=0.25) +
+	# 	
+	# 	theme_berginski() +
+	# 	xlab('') +
+	# 	ylab('Average Shrunk Log2 Fold Change') +
+	# 	ylim(c(-2.5,2.5))
+	print(this_plot)
+}
+```
+
+```{r}
+library(gghighlight)
+ggplot(kinase_DESeq_ratios_clusters %>% filter(cluster_num == 11), 
+			 aes(x=treatment,y=log2FoldChange)) + 
+	# geom_jitter() +
+	geom_line(aes(group = hgnc_symbol, color=hgnc_symbol)) +
+	gghighlight(hgnc_symbol == "PKMYT1" | 
+								hgnc_symbol == "CDK11B" | 
+								hgnc_symbol == "NEK4", use_direct_label = FALSE) +
+	geom_point(data = cluster_treatment_summary %>% filter(cluster_num == 11),
+						 aes(x=treatment,y=mean_log2), color='blue',alpha=0.5) +
+	theme(axis.text.x=element_text(angle = -90, hjust = 0,vjust=0.5)) +
+	xlab('') +
+	ylab('Log 2 Fold Expression Change') +
+	scale_color_discrete(name="Gene") +
+	# facet_wrap(~hgnc_symbol) +
+	theme_berginski()
+ggsave(here('figures/clustering/kinase_cluster_11.png'))
+
+kinase_DESeq_ratios_clusters %>% 
+	filter(cluster_num == 11) %>% 
+	group_by(hgnc_symbol) %>% 
+	summarise(mean_log2 = mean(log2FoldChange, na.rm=T)) %>%
+	write_csv(here('cluster_sets/kinase_cluster_11.csv'))
+```
+
+```{r}
+library(gghighlight)
+ggplot(kinase_DESeq_ratios_clusters %>% filter(cluster_num == 6), 
+			 aes(x=treatment,y=log2FoldChange)) + 
+	# geom_jitter() +
+	geom_line(aes(group = hgnc_symbol, color=hgnc_symbol)) +
+	gghighlight(hgnc_symbol == "CDK18" |
+								hgnc_symbol == "CDK19" |
+								hgnc_symbol == "SBK1", use_direct_label = FALSE) +
+	geom_point(data = cluster_treatment_summary %>% filter(cluster_num == 6),
+						 aes(x=treatment,y=mean_log2), color='blue',alpha=0.5) +
+	geom_point(data = treatment_summary,
+						 aes(x=treatment,y=mean_log2), color='red',alpha=0.5) +
+	theme(axis.text.x=element_text(angle = -90, hjust = 0,vjust=0.5)) +
+	xlab('') +
+	ylab('Log 2 Fold Expression Change') +
+	scale_color_discrete(name="Gene") +
+	# facet_wrap(~hgnc_symbol) +
+	theme_berginski()
+
+ggsave(here('figures/clustering/kinase_cluster_6.png'))
+
+kinase_DESeq_ratios_clusters %>% 
+	filter(cluster_num == 6) %>% 
+	group_by(hgnc_symbol) %>% 
+	summarise(mean_log2 = mean(log2FoldChange, na.rm=T)) %>%
+	write_csv(here('cluster_sets/kinase_cluster_06.csv'))
+```
+
+```{r}
+library(gghighlight)
+ggplot(kinase_DESeq_ratios_clusters %>% filter(cluster_num == 8), 
+			 aes(x=treatment,y=log2FoldChange)) + 
+	# geom_jitter() +
+	geom_line(aes(group = hgnc_symbol, color=hgnc_symbol)) +
+	gghighlight(hgnc_symbol == "TLK1" |
+								hgnc_symbol == "POMK", use_direct_label = FALSE) +
+	geom_point(data = cluster_treatment_summary %>% filter(cluster_num == 8),
+						 aes(x=treatment,y=mean_log2), color='blue',alpha=0.5) +
+	geom_point(data = treatment_summary,
+						 aes(x=treatment,y=mean_log2), color='red',alpha=0.5) +
+	theme(axis.text.x=element_text(angle = -90, hjust = 0,vjust=0.5)) +
+	xlab('') +
+	ylab('Log 2 Fold Expression Change') +
+	scale_color_discrete(name="Gene") +
+	# facet_wrap(~hgnc_symbol) +
+	theme_berginski()
+
+ggsave(here('figures/clustering/kinase_cluster_8.png'))
+
+kinase_DESeq_ratios_clusters %>% 
+	filter(cluster_num == 8) %>% 
+	group_by(hgnc_symbol,class) %>% 
+	summarise(mean_log2 = mean(log2FoldChange, na.rm=T)) %>%
+	arrange(desc(mean_log2)) %>%
+	select(hgnc_symbol,mean_log2,class) %>%
+	write_csv(here('cluster_sets/kinase_cluster_08.csv'))
+```
+
+## Grab Pairs of Highly Correlated Kinases
+
+Gary asked for 10 sets of highly correlated kinases, which I'm going to extract from the 10 cluster sets...
+
+```{r}
+kinase_cluster_10 = kinase_hier_all_clusters %>% 
+	filter(num_total_clusters == 10) 
+
+kinase_pairs = data.frame()
+
+for (this_cluster_num in sort(unique(kinase_cluster_10$cluster_id))) {
+	kinase_set = kinase_cluster_10 %>% 
+		filter(cluster_id == this_cluster_num)
+	
+	this_kinase_corr_set = drug_perturb_ratio_wide_experiments %>% 
+		select(kinase_set$symbol, treatment) %>% 
+		column_to_rownames('treatment') %>% 
+		corrr::correlate() %>%
+		pivot_longer(-term) %>%
+		rename(kinase_1 = term, kinase_2 = name) %>%
+		filter(kinase_1 > kinase_2)	%>%
+		left_join(all_kinases %>% select(symbol,class), by = c('kinase_1'='symbol')) %>%
+		rename(kinase_1_class = class) %>%
+		left_join(all_kinases %>% select(symbol,class), by = c('kinase_2'='symbol')) %>%
+		rename(kinase_2_class = class) %>%
+		# filter(kinase_1_class == "Dark" | kinase_2_class == "Dark") %>%
+		arrange(desc(value))
+	
+	kinase_pairs = rbind(kinase_pairs,
+											 this_kinase_corr_set[1,])
+}
+
+kinase_pairs = kinase_pairs %>% mutate(email_text = paste0(kinase_1,' \ ', kinase_2, " \ ", signif(value,3)))
+```
